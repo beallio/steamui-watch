@@ -43,7 +43,8 @@ elif args[0] == "api" and args[1] in state["api"]:
 elif args[:2] == ["issue", "list"]:
     out([i for i in issues if opt("--state") in ("all", i["state"])])
 elif args[:2] == ["issue", "create"]:
-    issues.append({"number": len(issues) + 1, "title": opt("--title"), "body": opt("--body"),
+    body = opt("--body") if "--body" in args else open(opt("--body-file")).read()
+    issues.append({"number": len(issues) + 1, "title": opt("--title"), "body": body,
                    "state": "open", "assignee": opt("--assignee")})
 elif args[:2] == ["issue", "close"]:
     next(i for i in issues if i["number"] == int(args[2]))["state"] = "closed"
@@ -334,6 +335,38 @@ class UpstreamWatchTest(WorkflowTest):
             {"filename": f"webpack/{n}.beta.json", "status": "added"} for n in range(1000, 1300)]
         self.assertEqual(self.watch(), [("DeckThemes mappings changed: ccccccc", "open")])
         self.assertIn("because it changes 300 or more files", self.state["issues"][0]["body"])
+
+
+class DeckyWatchTest(WorkflowTest):
+    def setUp(self):
+        super().setUp()
+        self.workspace = self.tmp / "workspace"
+        self.workspace.mkdir()
+        # Stand-in for decky_watch.py: writes the reports named in REPORTS.
+        (self.workspace / "decky_watch.py").write_text(textwrap.dedent('''
+            import os, sys
+            from pathlib import Path
+            out = Path(sys.argv[1])
+            out.mkdir(parents=True)
+            for name in os.environ["REPORTS"].split():
+                (out / f"{name}.md").write_text(f"missing in {name}\\n")
+        '''))
+
+    def watch(self, reports):
+        result, _ = self.run_step("decky-watch.yml", "Report missing Decky finders", cwd=self.workspace, REPORTS=reports)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return [(issue["title"], issue["state"]) for issue in self.state["issues"]]
+
+    def test_one_issue_per_client_version(self):
+        self.assertEqual(self.watch(""), [])
+        self.assertEqual(self.watch("beta-200 stable-100"), [("Decky finders missing in beta 200", "open"),
+                                                              ("Decky finders missing in stable 100", "open")])
+        self.assertEqual(self.state["issues"][0]["body"], "missing in beta-200\n")
+        self.state["issues"][0]["state"] = "closed"
+        self.assertEqual(self.watch("beta-200 stable-100 beta-2001")[1:], [
+            ("Decky finders missing in stable 100", "open"), ("Decky finders missing in beta 2001", "open")],
+            "a closed issue is not reopened, and a version that extends another's number is not a duplicate")
+
 
 
 class UpstreamAdoptTest(WorkflowTest):
