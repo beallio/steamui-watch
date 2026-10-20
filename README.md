@@ -4,6 +4,19 @@ Keeps CSS Loader themes working after Steam updates on the Steam Deck.
 
 Steam gives the parts of its interface random class names, and the names can change with each Steam update. CSS Loader themes depend on these names. The DeckThemes team publishes a translation list ("mappings") that lets old themes work on new Steam versions. This tool gets the newest Steam Deck interface files directly from Valve and adds them to that translation list, so you do not need a Steam Deck to do it.
 
+## Hosted mappings
+
+[beallio's CSS Loader fork](https://github.com/beallio/SDH-CssLoader) uses these files:
+
+- [Stable mappings](https://beallio.github.io/steamui-watch/stable.json)
+- [Beta mappings](https://beallio.github.io/steamui-watch/beta.json)
+
+The service checks Valve's stable and beta releases each day at 06:17 UTC. It publishes both files together after generation succeeds. If a run fails, the last published files stay available. GitHub can delay scheduled runs.
+
+To request an update now, open [Publish CSS mappings](https://github.com/beallio/steamui-watch/actions/workflows/publish-mappings.yml), select **Run workflow**, and use the `main` branch. You need write access to the repository.
+
+The standard CSS Loader still uses DeckThemes' service. These files use DeckThemes' mapping history and scripts under the [MIT license](https://beallio.github.io/steamui-watch/LICENSE.txt).
+
 ## What you need
 
 - Python 3.10 or newer. You do not need extra packages.
