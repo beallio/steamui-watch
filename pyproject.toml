@@ -1,0 +1,16 @@
+[project]
+name = "steamui-watch"
+version = "0"
+description = "CSS Loader class-name translation lists for Steam Deck updates"
+requires-python = ">=3.14"
+# Runtime stays standard library only.
+dependencies = []
+
+[dependency-groups]
+# ty is beta: its diagnostics can change between any two versions, so pin it exactly.
+dev = ["ty==0.0.86"]
+
+[tool.uv]
+package = false
+# Same supply-chain rule locally and in CI: only resolve packages at least 7 days old.
+exclude-newer = "7 days"
