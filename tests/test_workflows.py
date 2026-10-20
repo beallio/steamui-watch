@@ -225,24 +225,38 @@ class WatchdogTest(WorkflowTest):
     def setUp(self):
         super().setUp()
         self.state["api"]["repos/o/r/actions/workflows/publish-mappings.yml"] = {"state": "active"}
+        self.deploy()
+
+    def deploy(self, *statuses):
+        """Pages deployments, oldest first, as (state, hours ago of their latest status)."""
+        self.state["api"]["graphql"] = {"data": {"repository": {"deployments": {"nodes": [
+            {"latestStatus": {"state": state, "createdAt": iso(hours)}} for state, hours in statuses]}}}}
 
     def check(self):
         result, _ = self.run_step("watchdog.yml", "Report overdue publishing")
         self.assertEqual(result.returncode, 0, result.stderr)
         return [(issue["title"], issue["state"]) for issue in self.state["issues"]]
 
-    def test_recent_success_opens_nothing(self):
-        self.state["runs"] = [{"createdAt": iso(2), "conclusion": "success"}]
+    def test_deployed_run_that_failed_later_is_not_overdue(self):
+        # The run failed (e.g. in the issue step) after Pages deployed: publication is healthy.
+        self.state["runs"] = [{"createdAt": iso(1), "conclusion": "failure"},
+                              {"createdAt": iso(40), "conclusion": "success"}]
+        self.deploy(("SUCCESS", 40), ("SUCCESS", 1))
         self.assertEqual(self.check(), [])
 
-    def test_stale_success_opens_one_issue_and_recovery_closes_it(self):
-        # A recent failure must not count as a publication.
-        self.state["runs"] = [{"createdAt": iso(1), "conclusion": "failure"},
-                              {"createdAt": iso(30), "conclusion": "success"}]
+    def test_rerun_deployment_counts_from_its_own_time(self):
+        # A re-run of a 40-hour-old run deploys now; its run createdAt stays old.
+        self.state["runs"] = [{"createdAt": iso(40), "conclusion": "success"}]
+        self.deploy(("SUCCESS", 40), ("SUCCESS", 0))
+        self.assertEqual(self.check(), [])
+
+    def test_stale_deployment_opens_one_issue_and_recovery_closes_it(self):
+        # A recent failed deployment must not count as a publication.
+        self.deploy(("SUCCESS", 30), ("FAILURE", 1))
         self.assertEqual(self.check(), [(self.TITLE, "open")])
         self.assertIn("`active`", self.state["issues"][0]["body"])
         self.assertEqual(self.check(), [(self.TITLE, "open")])
-        self.state["runs"].insert(0, {"createdAt": iso(0), "conclusion": "success"})
+        self.deploy(("SUCCESS", 30), ("FAILURE", 1), ("SUCCESS", 0))
         self.assertEqual(self.check(), [(self.TITLE, "closed")])
         self.assertEqual(self.check(), [(self.TITLE, "closed")])
 

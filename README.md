@@ -13,7 +13,7 @@ Steam gives the parts of its interface random class names, and the names can cha
 
 The service checks Valve's stable and beta releases every 6 hours (at 00:17, 06:17, 12:17 and 18:17 UTC). It publishes both files together after generation succeeds. If a run fails, the last published files stay available. GitHub can delay scheduled runs.
 
-A second check runs every 6 hours as well. If nothing has been published successfully for 24 hours, it opens an issue named "CSS mappings are overdue" and assigns it to the owner. The issue closes by itself after the next successful publication.
+A second check runs every 6 hours as well. If the mapping files have not been published successfully for 24 hours, it opens an issue named "CSS mappings are overdue" and assigns it to the owner. It looks at the actual Pages publication, so a later problem in the same run (for example, opening an issue) does not count as a failed publication. The issue closes by itself after the next successful publication.
 
 Each release's class history is kept, so later updates can still translate class names from earlier Steam versions.
 

@@ -8,6 +8,7 @@ on:
 
 permissions:
   actions: read
+  deployments: read
   issues: write
 
 jobs:
@@ -24,8 +25,12 @@ jobs:
           title='CSS mappings are overdue'
           workflow_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/publish-mappings.yml"
           state=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/publish-mappings.yml" --jq .state)
-          last=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow publish-mappings.yml --status success \
-            --limit 1 --json createdAt --jq '.[0].createdAt // ""')
+          # Age of the newest successful Pages deployment: a run can fail after deploying (e.g. the issue
+          # step), and a re-run keeps its old createdAt, so run results do not measure publication.
+          last=$(gh api graphql -f owner="$GITHUB_REPOSITORY_OWNER" -f name="${GITHUB_REPOSITORY#*/}" -f query='
+            query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) {
+              deployments(environments: ["github-pages"], last: 50) { nodes { latestStatus { state createdAt } } } } }' \
+            --jq '[.data.repository.deployments.nodes[].latestStatus | select(.state == "SUCCESS") | .createdAt] | max // ""')
           open=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json number,title \
             --jq "map(select(.title == \"$title\"))[0].number // \"\"")
           age_hours=$(( ($(date +%s) - $(date -d "${last:-1970-01-01T00:00:00Z}" +%s)) / 3600 ))
