@@ -35,8 +35,7 @@ jobs:
           export TMPDIR="${RUNNER_TEMP}/steamui-watch"
           mkdir -m 700 -p "$TMPDIR"
           gh auth setup-git
-          # Full history (blobs on demand) so the issue step can list every retained version.
-          gh repo clone "$GITHUB_REPOSITORY" "$TMPDIR/mappings" -- --branch mapping-data --filter=blob:none
+          gh repo clone "$GITHUB_REPOSITORY" "$TMPDIR/mappings" -- --branch mapping-data --depth 1
           python3 css_mappings.py "$TMPDIR/mappings"
           git -C "$TMPDIR/mappings" config user.name 'github-actions[bot]'
           git -C "$TMPDIR/mappings" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -62,10 +61,10 @@ jobs:
         run: |
           mappings="$RUNNER_TEMP/steamui-watch/mappings"
           [ -d "$mappings/.git" ] || exit 0
-          # Every Steam version the bot pushed must appear in an issue title (open or closed),
+          # Every version we host that upstream lacks must appear in an issue title (open or closed),
           # so a failed or interrupted run is announced by the next one.
-          retained=$(git -C "$mappings" log origin/mapping-data --author='41898282+github-actions' \
-            --diff-filter=A --name-only --format= -- webpack | xargs -r basename -a -s .json | sort -u)
+          upstream=$(gh api repos/DeckThemes/CSSLoader-Mappings/contents/webpack --jq '.[].name')
+          retained=$(cd "$mappings/webpack" && for f in *.json; do grep -qxF "$f" <<<"$upstream" || basename "$f" .json; done)
           titles=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --limit 1000 --json title --jq '.[].title')
           new_dumps=$(for v in $retained; do grep -qwF "$v" <<<"$titles" || echo "$v"; done | paste -sd ' ')
           [ -n "$new_dumps" ] || exit 0
