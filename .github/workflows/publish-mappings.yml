@@ -11,7 +11,7 @@ on:
     - cron: '17 6 * * *'
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -27,14 +27,22 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
-      - name: Generate stable and beta mappings
+      - name: Generate and retain stable and beta mappings
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           export TMPDIR="${RUNNER_TEMP}/steamui-watch"
           mkdir -m 700 -p "$TMPDIR"
-          gh repo clone DeckThemes/CSSLoader-Mappings "$TMPDIR/mappings" -- --depth 1
+          gh auth setup-git
+          gh repo clone "$GITHUB_REPOSITORY" "$TMPDIR/mappings" -- --branch mapping-data --depth 1
           python3 css_mappings.py "$TMPDIR/mappings"
+          git -C "$TMPDIR/mappings" config user.name 'github-actions[bot]'
+          git -C "$TMPDIR/mappings" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C "$TMPDIR/mappings" add webpack webpack-mappings
+          if ! git -C "$TMPDIR/mappings" diff --cached --quiet; then
+            git -C "$TMPDIR/mappings" commit -m 'chore(mappings): retain Steam Deck class history'
+            git -C "$TMPDIR/mappings" push origin HEAD:mapping-data
+          fi
           mkdir "$TMPDIR/site"
           cp "$TMPDIR/mappings/stable.json" "$TMPDIR/mappings/beta.json" "$TMPDIR/site/"
           cp "$TMPDIR/mappings/LICENSE" "$TMPDIR/site/LICENSE.txt"
