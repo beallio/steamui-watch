@@ -11,7 +11,9 @@ Steam gives the parts of its interface random class names, and the names can cha
 - [Stable mappings](https://beallio.github.io/steamui-watch/stable.json)
 - [Beta mappings](https://beallio.github.io/steamui-watch/beta.json)
 
-The service checks Valve's stable and beta releases each day at 06:17 UTC. It publishes both files together after generation succeeds. If a run fails, the last published files stay available. GitHub can delay scheduled runs.
+The service checks Valve's stable and beta releases every 6 hours (at 00:17, 06:17, 12:17 and 18:17 UTC). It publishes both files together after generation succeeds. If a run fails, the last published files stay available. GitHub can delay scheduled runs.
+
+A second check runs every 6 hours as well. If nothing has been published successfully for 24 hours, it opens an issue named "CSS mappings are overdue" and assigns it to the owner. The issue closes by itself after the next successful publication.
 
 Each release's class history is kept, so later updates can still translate class names from earlier Steam versions.
 
@@ -67,3 +69,5 @@ The second step (the `classname_mappings.py` script) can take a few minutes.
 ```sh
 python3 -m unittest
 ```
+
+The workflow tests also need `git` and `jq`. They are skipped if either one is missing.

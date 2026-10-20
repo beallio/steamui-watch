@@ -1,0 +1,40 @@
+name: Mapping watchdog
+
+# A schedule that silently stops never fails, so a second workflow checks the first.
+on:
+  schedule:
+    - cron: '47 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Report overdue publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # shortcut: GitHub disables BOTH schedules after 60 days without commits, which this cannot see;
+          # add a keepalive commit if Steam ever goes 60 days without a new version.
+          max_age_hours=24
+          title='CSS mappings are overdue'
+          workflow_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/publish-mappings.yml"
+          state=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/publish-mappings.yml" --jq .state)
+          last=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow publish-mappings.yml --status success \
+            --limit 1 --json createdAt --jq '.[0].createdAt // ""')
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json number,title \
+            --jq "map(select(.title == \"$title\"))[0].number // \"\"")
+          age_hours=$(( ($(date +%s) - $(date -d "${last:-1970-01-01T00:00:00Z}" +%s)) / 3600 ))
+          if [ "$age_hours" -lt "$max_age_hours" ]; then
+            if [ -n "$open" ]; then
+              gh issue close "$open" --repo "$GITHUB_REPOSITORY" --comment "Publishing succeeded again at $last."
+            fi
+            exit 0
+          fi
+          [ -z "$open" ] || exit 0
+          gh issue create --repo "$GITHUB_REPOSITORY" --assignee "$GITHUB_REPOSITORY_OWNER" --title "$title" \
+            --body "$(printf 'No successful mapping publication for over %s hours.\n\n- Last success: `%s`\n- Workflow state: `%s`\n- [Publish CSS mappings runs](%s)\n\nOpen the runs and check the newest one. If the workflow is disabled, enable it. This issue closes by itself after the next successful publication.\n' "$max_age_hours" "${last:-never}" "$state" "$workflow_url")"
