@@ -1,5 +1,9 @@
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
+import css_mappings
 from css_mappings import extract_class_modules
 
 MINIFIED = (
@@ -49,6 +53,33 @@ class ExtractClassModulesTest(unittest.TestCase):
     def test_skips_large_localization_module(self):
         body = ",".join(f'k{i}:"v"' for i in range(1001)) + ',AboutSettings:"About"'
         self.assertEqual(extract_class_modules([f"5:(e=>{{e.exports={{{body}}}}})"]), {})
+
+
+class PipelineRetryTest(unittest.TestCase):
+    """Dumps saved by a failed or --no-pipeline run must not block the next pipeline run."""
+
+    def run_main(self, *flags):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "webpack").mkdir()
+            for script in css_mappings.PIPELINE:
+                (repo / script).touch()
+            for suffix in css_mappings.BRANCHES.values():
+                (repo / "webpack" / f"100.{suffix}.json").write_text("{}")
+            with (
+                mock.patch.object(css_mappings, "fetch_manifest", return_value=("100", {})),
+                mock.patch.object(css_mappings, "download_sources") as download,
+                mock.patch.object(css_mappings.subprocess, "run") as run,
+            ):
+                self.assertEqual(css_mappings.main([str(repo), *flags]), 0)
+            download.assert_not_called()
+            return [call.args[0][1] for call in run.call_args_list]
+
+    def test_runs_pipeline_when_dumps_already_exist(self):
+        self.assertEqual(self.run_main(), list(css_mappings.PIPELINE))
+
+    def test_no_pipeline_skips_scripts(self):
+        self.assertEqual(self.run_main("--no-pipeline"), [])
 
 
 if __name__ == "__main__":

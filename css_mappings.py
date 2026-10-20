@@ -101,7 +101,6 @@ def main(argv=None):
     if not webpack_dir.is_dir() or not all((args.mappings_repo / s).is_file() for s in PIPELINE):
         parser.error(f"{args.mappings_repo} is not a CSSLoader-Mappings checkout")
 
-    written = []
     for branch in args.branch or BRANCHES:
         version, fields = fetch_manifest(branch)
         target = webpack_dir / f"{version}.{BRANCHES[branch]}.json"
@@ -113,9 +112,9 @@ def main(argv=None):
             raise SystemExit(f"{branch}: only {len(modules)} class modules found; parser needs an update")
         target.write_text(json.dumps(modules), encoding="utf-8")
         print(f"{branch}: wrote {target.name} ({len(modules)} class modules)")
-        written.append(target)
 
-    if written and not args.no_pipeline:
+    # Run even when every dump existed: a failed or --no-pipeline earlier run must still be retryable.
+    if not args.no_pipeline:
         for script in PIPELINE:
             print(f"running {script}", flush=True)
             subprocess.run([sys.executable, script], cwd=args.mappings_repo, check=True)
