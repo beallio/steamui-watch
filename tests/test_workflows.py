@@ -10,6 +10,7 @@ import textwrap
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 WORKFLOWS = Path(__file__).resolve().parent.parent / ".github" / "workflows"
 BOT = "41898282+github-actions[bot]@users.noreply.github.com"
@@ -53,6 +54,16 @@ else:
 json.dump(state, open(path, "w"))
 '''
 
+# `uv run [--options] python ARGS` without uv or a Python download: the tests already run on Python.
+FAKE_UV = r'''#!/usr/bin/env python3
+import os, sys
+args = sys.argv[1:]
+python = args.index("python")
+if args[0] != "run" or not all(a.startswith("--") for a in args[1:python]):
+    sys.exit(f"unexpected uv call: {args}")
+os.execv(sys.executable, [sys.executable, *args[python + 1:]])
+'''
+
 
 def step_script(workflow, name):
     """Return the dedented `run: |` block of the named step."""
@@ -82,9 +93,10 @@ class WorkflowTest(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp)
         (self.tmp / "bin").mkdir()
-        (self.tmp / "bin" / "gh").write_text(FAKE_GH)
-        (self.tmp / "bin" / "gh").chmod(0o755)
-        self.state = {"fail": [], "issues": [], "api": {}, "runs": [], "remote": ""}
+        for name, script in (("gh", FAKE_GH), ("uv", FAKE_UV)):
+            (self.tmp / "bin" / name).write_text(script)
+            (self.tmp / "bin" / name).chmod(0o755)
+        self.state: dict[str, Any] = {"fail": [], "issues": [], "api": {}, "runs": [], "remote": ""}
         self.runners = 0
 
     def run_step(self, workflow, name, cwd=None, prepare=None, **env):
@@ -174,7 +186,9 @@ class NewMappingIssueTest(WorkflowTest):
 
     def setUp(self):
         super().setUp()
-        baseline = re.search(r"baseline=(\w+)", step_script("publish-mappings.yml", self.STEP))[1]
+        match = re.search(r"baseline=(\w+)", step_script("publish-mappings.yml", self.STEP))
+        assert match, "the new-mapping issue step has no baseline= commit"
+        baseline = match[1]
         self.baseline_call = f"api repos/o/r/contents/webpack?ref={baseline}"
         self.state["api"][self.baseline_call.split()[1]] = [{"name": "100.stable.json"}, {"name": "101.beta.json"}]
         self.versions = ["100.stable", "101.beta", "200.stable", "201.beta"]
