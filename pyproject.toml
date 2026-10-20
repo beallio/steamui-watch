@@ -13,4 +13,5 @@ dev = ["ty==0.0.86"]
 [tool.uv]
 package = false
 # Same supply-chain rule locally and in CI: only resolve packages at least 7 days old.
+# Lock without personal uv settings, which CI lacks: XDG_CONFIG_HOME="$(mktemp -d)" uv lock
 exclude-newer = "7 days"
