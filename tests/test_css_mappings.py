@@ -105,5 +105,34 @@ class PipelineOutputTest(unittest.TestCase):
                 {"1": {"Button": "old"}},
             )
 
+class ValidateMatchesTest(unittest.TestCase):
+    """Old 1 and 2 exist in version 100; 1 survives into 200, and 3 and 4 are new there."""
+
+    def check(self, mapped, new=()):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "webpack").mkdir()
+            (repo / "webpack-mappings").mkdir()
+            (repo / "webpack" / "100.beta.json").write_text(json.dumps({"1": {"a": "x"}, "2": {"b": "y"}}))
+            (repo / "webpack" / "200.beta.json").write_text(json.dumps({"1": {"a": "x"}, "3": {"b": "z"}, "4": {"c": "w"}}))
+            doc = {"new": [{"new": n, "possible_mappings": {}} for n in new],
+                   "mapped": {old: {"new": target, "possible_mappings": {old: 0.5}} for old, target in mapped.items()}}
+            (repo / "webpack-mappings" / "100to200.json").write_text(json.dumps(doc))
+            css_mappings.validate_matches(repo)
+
+    def test_accepts_a_match_onto_a_new_module(self):
+        self.check({"2": "3"}, new=["4"])
+
+    def test_rejects_unsafe_matches(self):
+        for mapped, new, reason in (
+            ({"2": "1"}, [], "already existed"),  # target keeps its own history: merging crashes the pipeline
+            ({"2": "3"}, ["3"], "used twice"),  # still listed as a brand-new module
+            ({"2": "9"}, [], "not in version 200"),
+            ({"9": "3"}, [], "not in version 100"),
+        ):
+            with self.subTest(mapped=mapped, new=new), self.assertRaisesRegex(SystemExit, reason):
+                self.check(mapped, new)
+
+
 if __name__ == "__main__":
     unittest.main()

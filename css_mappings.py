@@ -100,6 +100,44 @@ def _validate_mapping_output(path):
             raise SystemExit(f"{path.name}: history for {module_id!r} must be a nonempty list of strings")
 
 
+def validate_matches(repo):
+    """Reject module matches the upstream pipeline would mishandle, e.g. bad hand edits.
+
+    A match must map a module of the old version onto a module that is new in the new version,
+    and each new module at most once: a target that already existed has its own history, and
+    merging two histories crashes the pipeline ("Chain ... already exists").
+    """
+    dumps = {p.name.split(".")[0]: p for p in (repo / "webpack").glob("*.json")}
+    loaded = {}
+
+    def modules(version, path):
+        if version not in dumps:
+            raise SystemExit(f"{path.name}: no webpack dump for version {version}")
+        if version not in loaded:
+            loaded[version] = json.loads(dumps[version].read_text(encoding="utf-8"))
+        return loaded[version]
+
+    for path in sorted((repo / "webpack-mappings").glob("*to*.json")):
+        old_version, new_version = path.stem.split("to")
+        old, new = modules(old_version, path), modules(new_version, path)
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        listed_new = {entry["new"] for entry in doc["new"]}
+        targets = set()
+        for module_id, entry in doc["mapped"].items():
+            target = entry["new"]
+            match = f"{path.name}: {module_id}->{target}"
+            if module_id not in old:
+                raise SystemExit(f"{match}: module {module_id} is not in version {old_version}")
+            if target not in new:
+                raise SystemExit(f"{match}: module {target} is not in version {new_version}")
+            if target in old:
+                raise SystemExit(f"{match}: module {target} already existed in {old_version} and has its own history")
+            if target in listed_new or target in targets:
+                raise SystemExit(f"{match}: module {target} is used twice (remove it from the \"new\" list)")
+            targets.add(target)
+
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("mappings_repo", type=Path, help="checkout of DeckThemes/CSSLoader-Mappings")
@@ -126,6 +164,7 @@ def main(argv=None):
 
     # Run even when every dump existed: a failed or --no-pipeline earlier run must still be retryable.
     if not args.no_pipeline:
+        validate_matches(args.mappings_repo)
         for script in PIPELINE:
             print(f"running {script}", flush=True)
             subprocess.run([sys.executable, script], cwd=args.mappings_repo, check=True)
