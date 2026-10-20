@@ -62,6 +62,7 @@ The second step (the `classname_mappings.py` script) can take a few minutes.
 - **"is not a CSSLoader-Mappings checkout"**: Give the path to the folder that contains `webpack/` and `classname_mappings.py`.
 - **"SHA-256 does not match the manifest"**: The download is damaged or incomplete. Run the tool again.
 - **"only N class modules found"**: Steam changed how it packs its interface files. The tool needs an update. Do not use the output.
+- **"has its own history"** or **"is used twice"**: a hand-added match in `webpack-mappings/` points to a module that already existed, or that is matched twice. Remove that match. A match must connect an old module to a module that is new in the next version.
 - **HTTP 403 errors**: Some networks block downloads from Valve's servers. Try a different network.
 
 ## Running the tests
