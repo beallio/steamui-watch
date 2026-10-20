@@ -43,7 +43,7 @@ GitHub disables all scheduled checks after 60 days without activity in the repos
 
 You do not need this to use the lists. It is for testing or for checking a Steam update by hand. A run on your computer does not publish anything.
 
-You need Python 3.10 or newer and `git`. No other software is needed.
+You need Python 3.14 or newer and `git`. No other software is needed.
 
 1. Download this tool and open its folder:
 
@@ -86,10 +86,13 @@ The tool gets the current Steam Deck versions from Valve and downloads the scree
 
 The translation lists are built with the DeckThemes team's scripts and their earlier Steam history, used under the [MIT license](https://beallio.github.io/steamui-watch/LICENSE.txt).
 
-## For developers: running the tests
+## For developers
+
+The project uses [uv](https://docs.astral.sh/uv/) to pick the Python version (3.14, set in `.python-version`) and the type checker [ty](https://docs.astral.sh/ty/):
 
 ```sh
-python3 -m unittest
+uv run python -m unittest
+uv run ty check
 ```
 
-Some tests also need `jq`. They are skipped if `git` or `jq` is missing.
+`python3 -m unittest` also works without uv. Some tests also need `jq`; they are skipped if `git` or `jq` is missing. GitHub runs both checks on every push.
