@@ -15,6 +15,8 @@ The service checks Valve's stable and beta releases each day at 06:17 UTC. It pu
 
 Each release's class history is kept, so later updates can still translate class names from earlier Steam versions.
 
+When a new Steam version produces new mappings, the service opens an issue in this repository and assigns it to the owner. GitHub sends the usual issue notification. The issue lists the new versions and shows whether publishing succeeded. Check your themes on that version, then close the issue.
+
 To request an update now, open [Publish CSS mappings](https://github.com/beallio/steamui-watch/actions/workflows/publish-mappings.yml), select **Run workflow**, and use the `main` branch. You need write access to the repository.
 
 The standard CSS Loader still uses DeckThemes' service. These files use DeckThemes' mapping history and scripts under the [MIT license](https://beallio.github.io/steamui-watch/LICENSE.txt).
