@@ -1,0 +1,45 @@
+name: Publish CSS mappings
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - css_mappings.py
+      - .github/workflows/publish-mappings.yml
+  workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * *'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Generate stable and beta mappings
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          export TMPDIR="${RUNNER_TEMP}/steamui-watch"
+          mkdir -m 700 -p "$TMPDIR"
+          gh repo clone DeckThemes/CSSLoader-Mappings "$TMPDIR/mappings" -- --depth 1
+          python3 css_mappings.py "$TMPDIR/mappings"
+          mkdir "$TMPDIR/site"
+          cp "$TMPDIR/mappings/stable.json" "$TMPDIR/mappings/beta.json" "$TMPDIR/site/"
+          cp "$TMPDIR/mappings/LICENSE" "$TMPDIR/site/LICENSE.txt"
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: ${{ runner.temp }}/steamui-watch/site
+      - uses: actions/deploy-pages@v5
+        id: deployment
