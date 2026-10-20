@@ -87,6 +87,14 @@ def iso(hours_ago):
     return (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+BASELINE = "b" * 40  # stands in for the DeckThemes commit in .github/upstream-baseline
+
+
+def write_baseline(workspace, sha=BASELINE):
+    (workspace / ".github").mkdir(exist_ok=True)
+    (workspace / ".github" / "upstream-baseline").write_text(sha + "\n")
+
+
 @unittest.skipUnless(shutil.which("jq") and shutil.which("git"), "needs jq and git")
 class WorkflowTest(unittest.TestCase):
     def setUp(self):
@@ -186,15 +194,13 @@ class NewMappingIssueTest(WorkflowTest):
 
     def setUp(self):
         super().setUp()
-        match = re.search(r"baseline=(\w+)", step_script("publish-mappings.yml", self.STEP))
-        assert match, "the new-mapping issue step has no baseline= commit"
-        baseline = match[1]
-        self.baseline_call = f"api repos/o/r/contents/webpack?ref={baseline}"
+        self.baseline_call = f"api repos/o/r/contents/webpack?ref={BASELINE}"
         self.state["api"][self.baseline_call.split()[1]] = [{"name": "100.stable.json"}, {"name": "101.beta.json"}]
         self.versions = ["100.stable", "101.beta", "200.stable", "201.beta"]
 
     def announce(self):
         def prepare(runner_temp):
+            write_baseline(runner_temp)
             webpack = runner_temp / "steamui-watch" / "mappings" / "webpack"
             webpack.mkdir(parents=True)
             (webpack.parent / ".git").mkdir()
@@ -277,6 +283,86 @@ class WatchdogTest(WorkflowTest):
     def test_never_published_is_overdue(self):
         self.assertEqual(self.check(), [(self.TITLE, "open")])
         self.assertIn("`never`", self.state["issues"][0]["body"])
+
+
+class UpstreamWatchTest(WorkflowTest):
+    UPSTREAM = "repos/DeckThemes/CSSLoader-Mappings"
+
+    def setUp(self):
+        super().setUp()
+        self.state["api"]["repos/o/r/contents/webpack?ref=mapping-data"] = [{"name": "300.beta.json"}]
+        self.upstream_head(BASELINE)
+
+    def upstream_head(self, sha):
+        self.state["api"][f"{self.UPSTREAM}/commits/main"] = {"sha": sha}
+        self.state["api"][f"{self.UPSTREAM}/compare/{BASELINE}...{sha}"] = {
+            "commits": [{"sha": sha, "commit": {"message": "New versions\n\ndetails",
+                                                "committer": {"date": "2026-11-01T00:00:00Z"}}}],
+            "files": [{"filename": "webpack/300.beta.json"}, {"filename": "webpack/400.beta.json"},
+                      {"filename": "README.md"}]}
+
+    def watch(self):
+        result, _ = self.run_step("upstream-watch.yml", "Report new upstream commits", prepare=write_baseline)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return [(issue["title"], issue["state"]) for issue in self.state["issues"]]
+
+    def test_unchanged_upstream_opens_nothing(self):
+        self.assertEqual(self.watch(), [])
+
+    def test_new_upstream_commits_open_one_issue_per_head(self):
+        self.upstream_head("c" * 40)
+        self.assertEqual(self.watch(), [("DeckThemes mappings changed: ccccccc", "open")])
+        body = self.state["issues"][0]["body"]
+        self.assertIn(f"compare/{BASELINE}...{'c' * 40}", body)
+        self.assertIn("- `ccccccc` New versions (2026-11-01)", body)
+        self.assertIn("- `webpack/300.beta.json` (also in mapping-data)", body)
+        self.assertIn("- `webpack/400.beta.json`\n", body)
+        self.assertEqual(self.watch(), [("DeckThemes mappings changed: ccccccc", "open")], "no duplicate")
+        # Closing means "reviewed, not merged": the same head must not reopen an issue.
+        self.state["issues"][0]["state"] = "closed"
+        self.assertEqual(self.watch(), [("DeckThemes mappings changed: ccccccc", "closed")])
+        self.upstream_head("d" * 40)
+        self.assertEqual(self.watch()[-1], ("DeckThemes mappings changed: ddddddd", "open"))
+
+
+class KeepaliveTest(WorkflowTest):
+    def commit_log(self):
+        return subprocess.run(["git", "log", "--format=%s", "main"], cwd=self.tmp / "remote.git",
+                              check=True, capture_output=True, text=True).stdout.splitlines()
+
+    def last_commit_days_ago(self, days):
+        seed = self.tmp / "seed"
+        seed.mkdir()
+        (seed / "README.md").write_text("x")
+        git("init", "-q", "-b", "main", cwd=seed)
+        git("add", ".", cwd=seed)
+        when = f"{int(datetime.now(timezone.utc).timestamp()) - days * 86400} +0000"
+        subprocess.run(["git", "-c", "user.name=seed", "-c", "user.email=seed@test", "commit", "-qm", "seed"],
+                       cwd=seed, check=True, env={**os.environ, "GIT_AUTHOR_DATE": when, "GIT_COMMITTER_DATE": when})
+        git("clone", "-q", "--bare", str(seed), str(self.tmp / "remote.git"), cwd=self.tmp)
+
+    def keepalive(self):
+        workspace = self.tmp / f"workspace{self.runners}"
+        git("clone", "-q", "--depth", "1", f"file://{self.tmp / 'remote.git'}", str(workspace), cwd=self.tmp)
+        result, _ = self.run_step("watchdog.yml", "Keep the schedules active", cwd=workspace)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_quiet_repository_gets_one_empty_commit(self):
+        self.last_commit_days_ago(50)
+        self.keepalive()
+        log = self.commit_log()
+        self.assertEqual(len(log), 2)
+        self.assertTrue(log[0].startswith("chore: keep scheduled workflows active (50 days"), log[0])
+        tree = lambda ref: subprocess.run(["git", "rev-parse", f"{ref}^{{tree}}"], cwd=self.tmp / "remote.git",
+                                          check=True, capture_output=True, text=True).stdout
+        self.assertEqual(tree("main"), tree("main~1"), "the keepalive commit must not change files")
+        self.keepalive()
+        self.assertEqual(len(self.commit_log()), 2, "a fresh commit needs no second keepalive")
+
+    def test_recent_commit_needs_no_keepalive(self):
+        self.last_commit_days_ago(44)
+        self.keepalive()
+        self.assertEqual(self.commit_log(), ["seed"])
 
 
 if __name__ == "__main__":
