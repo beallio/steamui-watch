@@ -71,8 +71,8 @@ jobs:
           # Every version we added on top of the upstream snapshot that seeded mapping-data must appear
           # in an issue title (open or closed), so a failed or interrupted run is announced by the next one.
           # Pinned, not live upstream: a version DeckThemes adds later must not hide our unannounced one.
-          # Update this commit only when deliberately merging upstream into mapping-data.
-          baseline=a180462a3688855612a803c20e87ab43304f626e
+          # .github/upstream-baseline: the DeckThemes commit last merged into mapping-data.
+          baseline=$(cat .github/upstream-baseline)
           upstream=$(gh api "repos/$GITHUB_REPOSITORY/contents/webpack?ref=$baseline" --jq '.[].name')
           retained=$(cd "$mappings/webpack" && for f in *.json; do grep -qxF "$f" <<<"$upstream" || basename "$f" .json; done)
           titles=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --limit 1000 --json title --jq '.[].title')
