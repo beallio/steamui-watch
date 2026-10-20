@@ -88,6 +88,17 @@ def download_sources(fields):
     with zipfile.ZipFile(io.BytesIO(data)) as bundle:
         return [bundle.read(n).decode("utf-8", "replace") for n in bundle.namelist() if n.endswith(".js")]
 
+def _validate_mapping_output(path):
+    try:
+        mappings = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise SystemExit(f"{path.name}: cannot read valid mapping JSON: {error}") from error
+    if not isinstance(mappings, dict) or not mappings:
+        raise SystemExit(f"{path.name}: expected a nonempty JSON object")
+    for module_id, history in mappings.items():
+        if not isinstance(history, list) or not history or any(not isinstance(name, str) for name in history):
+            raise SystemExit(f"{path.name}: history for {module_id!r} must be a nonempty list of strings")
+
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -118,6 +129,8 @@ def main(argv=None):
         for script in PIPELINE:
             print(f"running {script}", flush=True)
             subprocess.run([sys.executable, script], cwd=args.mappings_repo, check=True)
+        for branch in BRANCHES.values():
+            _validate_mapping_output(args.mappings_repo / f"{branch}.json")
     return 0
 
 

@@ -41,6 +41,7 @@ The tool does these steps:
 3. It downloads the interface files for a new version and makes sure the download is not damaged.
 4. It writes `webpack/<version>.stable.json` or `webpack/<version>.beta.json`.
 5. It runs the three DeckThemes scripts, which make the new `beta.json` and `stable.json`. It runs them even if no new file was written, so you can run the tool again to finish a run that failed or used `--no-pipeline`.
+6. It checks that both output files contain nonempty class histories. If either file is missing or invalid, the run fails instead of publishing it.
 
 Useful options:
 

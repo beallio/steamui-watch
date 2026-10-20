@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -55,32 +56,54 @@ class ExtractClassModulesTest(unittest.TestCase):
         self.assertEqual(extract_class_modules([f"5:(e=>{{e.exports={{{body}}}}})"]), {})
 
 
-class PipelineRetryTest(unittest.TestCase):
-    """Dumps saved by a failed or --no-pipeline run must not block the next pipeline run."""
+class PipelineOutputTest(unittest.TestCase):
+    def test_pipeline_rejects_incompatible_outputs(self):
+        for outputs in (
+            {},
+            {"stable.json": {"module": ["ok"]}},
+            {"beta.json": {"module": ["ok"]}},
+            {"beta.json": "not json", "stable.json": {"module": ["ok"]}},
+            {"beta.json": {}, "stable.json": {"module": ["ok"]}},
+            {"beta.json": [], "stable.json": {"module": ["ok"]}},
+            {"beta.json": {"module": []}, "stable.json": {"module": ["ok"]}},
+            {"beta.json": {"module": "not a list"}, "stable.json": {"module": ["ok"]}},
+            {"beta.json": {"module": ["ok", 1]}, "stable.json": {"module": ["ok"]}},
+            {"beta.json": {"module": ["ok"]}, "stable.json": {"module": ["ok", None]}},
+        ):
+            with self.subTest(outputs=outputs), tempfile.TemporaryDirectory() as tmp:
+                repo = Path(tmp)
+                (repo / "webpack").mkdir()
+                for script in css_mappings.PIPELINE:
+                    (repo / script).touch()
+                for suffix in css_mappings.BRANCHES.values():
+                    (repo / "webpack" / f"100.{suffix}.json").write_text("{}")
+                generator = "from pathlib import Path\n"
+                for name, payload in outputs.items():
+                    content = payload if isinstance(payload, str) else json.dumps(payload)
+                    generator += f"Path({name!r}).write_text({content!r}, encoding='utf-8')\n"
+                (repo / css_mappings.PIPELINE[-1]).write_text(generator)
+                with (
+                    mock.patch.object(css_mappings, "fetch_manifest", return_value=("100", {})),
+                    self.assertRaises(SystemExit),
+                ):
+                    css_mappings.main([str(repo)])
 
-    def run_main(self, *flags):
+    def test_no_pipeline_writes_the_dump_without_requiring_final_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             (repo / "webpack").mkdir()
             for script in css_mappings.PIPELINE:
                 (repo / script).touch()
-            for suffix in css_mappings.BRANCHES.values():
-                (repo / "webpack" / f"100.{suffix}.json").write_text("{}")
             with (
                 mock.patch.object(css_mappings, "fetch_manifest", return_value=("100", {})),
-                mock.patch.object(css_mappings, "download_sources") as download,
-                mock.patch.object(css_mappings.subprocess, "run") as run,
+                mock.patch.object(css_mappings, "download_sources", return_value=['1:(e=>{e.exports={Button:"old"}})']),
+                mock.patch.object(css_mappings, "MIN_MODULES", 1),
             ):
-                self.assertEqual(css_mappings.main([str(repo), *flags]), 0)
-            download.assert_not_called()
-            return [call.args[0][1] for call in run.call_args_list]
-
-    def test_runs_pipeline_when_dumps_already_exist(self):
-        self.assertEqual(self.run_main(), list(css_mappings.PIPELINE))
-
-    def test_no_pipeline_skips_scripts(self):
-        self.assertEqual(self.run_main("--no-pipeline"), [])
-
+                self.assertEqual(css_mappings.main([str(repo), "--branch", "stable", "--no-pipeline"]), 0)
+            self.assertEqual(
+                json.loads((repo / "webpack" / "100.stable.json").read_text()),
+                {"1": {"Button": "old"}},
+            )
 
 if __name__ == "__main__":
     unittest.main()
