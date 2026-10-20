@@ -6,6 +6,9 @@ on:
     paths:
       - css_mappings.py
       - .github/workflows/publish-mappings.yml
+      - pyproject.toml
+      - uv.lock
+      - .python-version
   workflow_dispatch:
   schedule:
     - cron: '17 */6 * * *'
@@ -28,6 +31,9 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: "0.13.0"
       - name: Generate and retain stable and beta mappings
         env:
           GH_TOKEN: ${{ github.token }}
@@ -36,7 +42,8 @@ jobs:
           mkdir -m 700 -p "$TMPDIR"
           gh auth setup-git
           gh repo clone "$GITHUB_REPOSITORY" "$TMPDIR/mappings" -- --branch mapping-data --depth 1
-          python3 css_mappings.py "$TMPDIR/mappings"
+          # Python from .python-version. --frozen: uv.lock also records the owner's personal uv settings, which CI lacks.
+          uv run --frozen --no-dev python css_mappings.py "$TMPDIR/mappings"
           git -C "$TMPDIR/mappings" config user.name 'github-actions[bot]'
           git -C "$TMPDIR/mappings" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git -C "$TMPDIR/mappings" add webpack webpack-mappings
