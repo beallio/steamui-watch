@@ -1,74 +1,88 @@
 # steamui-watch
 
-Keeps CSS Loader themes working after Steam updates on the Steam Deck.
+Keeps CSS Loader themes working on the Steam Deck after Steam updates.
 
-Steam gives the parts of its interface random class names, and the names can change with each Steam update. CSS Loader themes depend on these names. The DeckThemes team publishes a translation list ("mappings") that lets old themes work on new Steam versions. This tool gets the newest Steam Deck interface files directly from Valve and adds them to that translation list, so you do not need a Steam Deck to do it.
+## What it does
 
-## Hosted mappings
+CSS Loader themes change how the Steam screen looks. To do that, a theme points at parts of the screen by their internal names. Steam gives these parts random names, and an update can change them. When the names change, themes stop working.
 
-[beallio's CSS Loader fork](https://github.com/beallio/SDH-CssLoader) uses these files:
+This service follows every Steam Deck update. It reads the new screen files directly from Valve and publishes a translation list from the old names to the new names. CSS Loader uses the list to make old themes work on the new Steam version.
 
-- [Stable mappings](https://beallio.github.io/steamui-watch/stable.json)
-- [Beta mappings](https://beallio.github.io/steamui-watch/beta.json)
+## Do I need to do anything?
 
-The service checks Valve's stable and beta releases every 6 hours (at 00:17, 06:17, 12:17 and 18:17 UTC). It publishes both files together after generation succeeds. If a run fails, the last published files stay available. GitHub can delay scheduled runs.
+No, if you use [beallio's CSS Loader](https://github.com/beallio/SDH-CssLoader). It downloads the newest list every hour.
 
-A second check runs every 6 hours as well. If the mapping files have not been published successfully for 24 hours, it opens an issue named "CSS mappings are overdue" and assigns it to the owner. It looks at the actual Pages publication, so a later problem in the same run (for example, opening an issue) does not count as a failed publication. The issue closes by itself after the next successful publication.
+The standard CSS Loader uses the list from the DeckThemes team instead, not this one.
 
-Each release's class history is kept, so later updates can still translate class names from earlier Steam versions.
+The lists are public:
 
-When a new Steam version produces new mappings, the service opens an issue in this repository and assigns it to the owner. GitHub sends the usual issue notification. The issue lists the new versions and shows whether publishing succeeded. Check your themes on that version, then close the issue.
+- [Stable list](https://beallio.github.io/steamui-watch/stable.json), for the normal Steam Deck version
+- [Beta list](https://beallio.github.io/steamui-watch/beta.json), for the Steam Deck beta
 
-To request an update now, open [Publish CSS mappings](https://github.com/beallio/steamui-watch/actions/workflows/publish-mappings.yml), select **Run workflow**, and use the `main` branch. You need write access to the repository.
+## What happens automatically
 
-The standard CSS Loader still uses DeckThemes' service. These files use DeckThemes' mapping history and scripts under the [MIT license](https://beallio.github.io/steamui-watch/LICENSE.txt).
+- Every 6 hours, the service checks Valve for new stable and beta versions and publishes both lists.
+- If a check fails, the last good lists stay online.
+- Each list keeps the names from all earlier Steam versions, so old themes can still be translated.
+- When a new Steam version arrives, the service opens an issue named **"New CSS mappings"** in this repository and assigns it to the owner. GitHub sends its normal issue notification.
+- If no new list was published for 24 hours, the service opens an issue named **"CSS mappings are overdue"**. That issue closes by itself after the next successful publication.
 
-## What you need
+GitHub can run the checks a little late.
 
-- Python 3.10 or newer. You do not need extra packages.
-- A copy of the DeckThemes mappings repository:
+## For the owner
 
-  ```sh
-  git clone https://github.com/DeckThemes/CSSLoader-Mappings.git
-  ```
+**When a "New CSS mappings" issue opens:** try a few themes on the new Steam version, then close the issue. Keep the version numbers in the title, because the service uses them to know which versions it has announced.
 
-## Everyday use
+**When a "CSS mappings are overdue" issue opens:** open the [Publish CSS mappings](https://github.com/beallio/steamui-watch/actions/workflows/publish-mappings.yml) page and look at the newest run. If GitHub shows that the workflow is disabled, enable it.
 
-```sh
-python3 css_mappings.py path/to/CSSLoader-Mappings
-```
+GitHub disables all scheduled checks after 60 days without activity in the repository. When that happens, the overdue issue cannot open either. If you see no issue and no new run for a long time, check that page.
 
-The tool does these steps:
+**To publish now:** open the [Publish CSS mappings](https://github.com/beallio/steamui-watch/actions/workflows/publish-mappings.yml) page, select **Run workflow**, and choose the `main` branch.
 
-1. It reads the current Steam Deck **stable** and **beta** versions from Valve.
-2. It skips a version that already has a file in `webpack/`.
-3. It downloads the interface files for a new version and makes sure the download is not damaged.
-4. It writes `webpack/<version>.stable.json` or `webpack/<version>.beta.json`.
-5. It runs the three DeckThemes scripts, which make the new `beta.json` and `stable.json`. It runs them even if no new file was written, so you can run the tool again to finish a run that failed or used `--no-pipeline`.
-6. It checks that both output files contain nonempty class histories. If either file is missing or invalid, the run fails instead of publishing it.
+## Run it on your own computer (advanced)
 
-Useful options:
+You do not need this to use the lists. It is for testing or for checking a Steam update by hand. A run on your computer does not publish anything.
+
+You need Python 3.10 or newer and `git`. No other software is needed.
+
+1. Download the saved Steam history from this repository's `mapping-data` branch:
+
+   ```sh
+   git clone --branch mapping-data https://github.com/beallio/steamui-watch.git mapping-data
+   ```
+
+   Use this branch, not the DeckThemes repository. It holds every Steam version this service has seen and the hand-made fixes. A copy from DeckThemes does not have them, so its lists would be incomplete.
+
+2. Run the tool:
+
+   ```sh
+   python3 css_mappings.py mapping-data
+   ```
+
+The tool gets the current Steam Deck versions from Valve and downloads the screen files of any version it has not seen yet. It checks that the download is not damaged. Then it runs the DeckThemes scripts that make `stable.json` and `beta.json`. It checks that both files are complete. This takes a few minutes.
 
 | Option | What it does |
 |---|---|
-| `--branch stable` or `--branch publicbeta` | Do only one branch. |
-| `--force` | Make the file again, even if it exists. |
-| `--no-pipeline` | Write the new file, but do not run the DeckThemes scripts. |
-
-The second step (the `classname_mappings.py` script) can take a few minutes.
+| `--branch stable` or `--branch publicbeta` | Check only the stable or only the beta version. |
+| `--force` | Download and read a version again, even if the tool has seen it. |
+| `--no-pipeline` | Save the new Steam data, but do not make the lists. |
 
 ## Troubleshooting
 
-- **"is not a CSSLoader-Mappings checkout"**: Give the path to the folder that contains `webpack/` and `classname_mappings.py`.
-- **"SHA-256 does not match the manifest"**: The download is damaged or incomplete. Run the tool again.
-- **"only N class modules found"**: Steam changed how it packs its interface files. The tool needs an update. Do not use the output.
-- **"has its own history"** or **"is used twice"**: a hand-added match in `webpack-mappings/` points to a module that already existed, or that is matched twice. Remove that match. A match must connect an old module to a module that is new in the next version.
-- **HTTP 403 errors**: Some networks block downloads from Valve's servers. Try a different network.
+- **"is not a CSSLoader-Mappings checkout"**: give the path to the folder you downloaded in step 1.
+- **"SHA-256 does not match the manifest"**: the download is damaged or incomplete. Run the tool again.
+- **"only N class modules found"**: Steam changed how it stores its screen files, and the tool needs an update. Do not use the result.
+- **"has its own history"** or **"is used twice"**: a hand-made fix in `webpack-mappings/` is wrong. Remove that fix.
+- **HTTP 403 errors**: your network blocks downloads from Valve. Try a different network.
 
-## Running the tests
+## Credits and license
+
+The translation lists are built with the DeckThemes team's scripts and their earlier Steam history, used under the [MIT license](https://beallio.github.io/steamui-watch/LICENSE.txt).
+
+## For developers: running the tests
 
 ```sh
 python3 -m unittest
 ```
 
-The workflow tests also need `git` and `jq`. They are skipped if either one is missing.
+Some tests also need `jq`. They are skipped if `git` or `jq` is missing.
