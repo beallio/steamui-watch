@@ -19,8 +19,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # shortcut: GitHub disables BOTH schedules after 60 days without commits, which this cannot see;
-          # add a keepalive commit if Steam ever goes 60 days without a new version.
+          # GitHub's 60-day inactivity rule would stop this check too; the keepalive job prevents that.
           max_age_hours=24
           title='CSS mappings are overdue'
           workflow_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/publish-mappings.yml"
@@ -43,3 +42,20 @@ jobs:
           [ -z "$open" ] || exit 0
           gh issue create --repo "$GITHUB_REPOSITORY" --assignee "$GITHUB_REPOSITORY_OWNER" --title "$title" \
             --body "$(printf 'No successful mapping publication for over %s hours.\n\n- Last success: `%s`\n- Workflow state: `%s`\n- [Publish CSS mappings runs](%s)\n\nOpen the runs and check the newest one. If the workflow is disabled, enable it. This issue closes by itself after the next successful publication.\n' "$max_age_hours" "${last:-never}" "$state" "$workflow_url")"
+
+  keepalive:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Keep the schedules active
+        run: |
+          # GitHub disables scheduled workflows after 60 days without repository activity. Only commits
+          # to the default branch are known to count, so add an empty one after 45 quiet days.
+          quiet_days=$(( ($(date +%s) - $(git log -1 --format=%ct)) / 86400 ))
+          [ "$quiet_days" -ge 45 ] || exit 0
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit --allow-empty -m "chore: keep scheduled workflows active ($quiet_days days without commits)"
+          git push origin HEAD:main
