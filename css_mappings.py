@@ -1,4 +1,4 @@
-"""Dump Steam Deck UI CSS class modules into a DeckThemes/CSSLoader-Mappings checkout.
+"""Dump Steam Deck UI CSS class modules into a mappings checkout and build the CSS Loader lists.
 
 Reads Valve's Steam Deck client manifests, downloads the matching steamui bundle,
 writes webpack/<version>.<stable|beta>.json and runs the upstream mapping scripts.
@@ -140,7 +140,8 @@ def validate_matches(repo):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("mappings_repo", type=Path, help="checkout of DeckThemes/CSSLoader-Mappings")
+    parser.add_argument("mappings_repo", type=Path,
+                        help="checkout of this repository's mapping-data branch (DeckThemes/CSSLoader-Mappings format)")
     parser.add_argument("--branch", choices=BRANCHES, action="append", help="Valve branch (default: both)")
     parser.add_argument("--force", action="store_true", help="rewrite dumps that already exist")
     parser.add_argument("--no-pipeline", action="store_true", help="only write the webpack dumps")
