@@ -1,0 +1,24 @@
+name: Check
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: "0.13.0"
+      # --frozen: uv.lock also records the owner's personal uv settings, which CI lacks.
+      - name: Install Python and ty
+        run: uv sync --frozen
+      - name: Tests
+        run: uv run --frozen python -m unittest
+      - name: Type check
+        run: uv run --frozen ty check
