@@ -137,7 +137,8 @@ FINDERS = (
          (re.compile(r"routePath:[\w$]+\.match\?\.path."), re.compile(r"routePath:null===\(.=.\.match\)"))),
     code(LOADER, "router-hook: router node", "bShowDesktopUIContent:"),
     code(LOADER, "router-hook: settings node", "Settings.Root()"),
-    code(LOADER, "tabs-hook: QAM renderers", "QuickAccessMenuBrowserView", "QuickAccessMenuEmbedded"),
+    # tabs-hook.tsx also patches QuickAccessMenuEmbedded, but only when it exists.
+    code(LOADER, "tabs-hook: QAM renderer", "QuickAccessMenuBrowserView"),
     code(LOADER, "toaster: Valve toast renderer", 'controller:"notification",method:'),
     code(LOADER, "filepicker: history", name("m_history")),
     classes(LOADER, "Markdown: EventDetailsBody", "EventDetailsBody"),

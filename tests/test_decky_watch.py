@@ -43,6 +43,13 @@ class MissingTest(unittest.TestCase):
             self.assertTrue(finder.code or finder.classes, finder.name)
             self.assertTrue(all(finder.code), finder.name)
 
+    def test_qam_hook_needs_only_the_browser_view(self):
+        # tabs-hook.tsx patches QuickAccessMenuEmbedded only when the build has it.
+        qam = [finder for finder in FINDERS if finder.name.startswith("tabs-hook")]
+        self.assertEqual(len(qam), 1)
+        bundle = ['A.type=function(){return"QuickAccessMenuBrowserView"};']
+        self.assertEqual(missing(bundle, {}, qam), [])
+
 
 if __name__ == "__main__":
     unittest.main()
