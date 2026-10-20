@@ -42,8 +42,8 @@ jobs:
           mkdir -m 700 -p "$TMPDIR"
           gh auth setup-git
           gh repo clone "$GITHUB_REPOSITORY" "$TMPDIR/mappings" -- --branch mapping-data --depth 1
-          # Python from .python-version. --frozen: uv.lock also records the owner's personal uv settings, which CI lacks.
-          uv run --frozen --no-dev python css_mappings.py "$TMPDIR/mappings"
+          # Python from .python-version; --locked fails if uv.lock no longer matches pyproject.toml.
+          uv run --locked --no-dev python css_mappings.py "$TMPDIR/mappings"
           git -C "$TMPDIR/mappings" config user.name 'github-actions[bot]'
           git -C "$TMPDIR/mappings" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git -C "$TMPDIR/mappings" add webpack webpack-mappings
