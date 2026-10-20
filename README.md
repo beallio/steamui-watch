@@ -13,6 +13,8 @@ Steam gives the parts of its interface random class names, and the names can cha
 
 The service checks Valve's stable and beta releases each day at 06:17 UTC. It publishes both files together after generation succeeds. If a run fails, the last published files stay available. GitHub can delay scheduled runs.
 
+Each release's class history is kept, so later updates can still translate class names from earlier Steam versions.
+
 To request an update now, open [Publish CSS mappings](https://github.com/beallio/steamui-watch/actions/workflows/publish-mappings.yml), select **Run workflow**, and use the `main` branch. You need write access to the repository.
 
 The standard CSS Loader still uses DeckThemes' service. These files use DeckThemes' mapping history and scripts under the [MIT license](https://beallio.github.io/steamui-watch/LICENSE.txt).
