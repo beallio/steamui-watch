@@ -1,14 +1,15 @@
 name: Watch DeckThemes mappings
 
 # DeckThemes changes its scripts and data by hand every few months. mapping-data started from
-# their commit in .github/upstream-baseline, so report newer upstream commits for review.
+# their commit in .github/upstream-baseline. Merge newer upstream commits when that is safe;
+# otherwise report them for review.
 on:
   schedule:
     - cron: '23 4 * * *'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   issues: write
 
 jobs:
@@ -16,7 +17,10 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - name: Report new upstream commits
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: "0.13.0"
+      - name: Adopt or report new upstream commits
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -28,6 +32,54 @@ jobs:
           titles=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --limit 1000 --json title --jq '.[].title')
           if grep -qF "${head:0:7}" <<<"$titles"; then exit 0; fi
           compare=$(gh api "repos/$upstream/compare/$baseline...$head")
+          # Adopt only new or edited dumps and matches: the publish job runs the scripts, so script changes need review.
+          other=$(jq -r '.files[] | select((.status == "added" or .status == "modified") and (.filename | test("^webpack(-mappings)?/[^/]+\\.json$")) | not)
+            | "`\(.filename)` (\(.status))"' <<<"$compare" | paste -sd ' ')
+          reason=
+          [ -z "$other" ] || reason="it changes files other than dumps and matches: $other"
+          # The compare API lists at most 300 files, so a longer list may hide a script change.
+          [ "$(jq '.files | length' <<<"$compare")" -lt 300 ] || reason="it changes 300 or more files, more than GitHub's compare API lists"
+          if [ -z "$reason" ]; then
+            export TMPDIR="$RUNNER_TEMP/steamui-watch"
+            mkdir -m 700 -p "$TMPDIR"
+            mappings="$TMPDIR/mappings"
+            gh auth setup-git
+            gh repo clone "$GITHUB_REPOSITORY" "$mappings" -- --branch mapping-data
+            git -C "$mappings" fetch -q "$GITHUB_SERVER_URL/$upstream.git" "$head"
+            # The pipeline chains dumps by timestamp. A new dump older than an existing one would
+            # replace our reviewed matches with new ones, so only dumps newer than all others are safe.
+            # Dumps mapping-data already has are skipped: they are ours, or this head was merged before.
+            existing=$(git -C "$mappings" ls-tree --name-only HEAD webpack/)
+            for added in $(jq -r '.files[] | select(.status == "added") | .filename | select(startswith("webpack/"))' <<<"$compare"); do
+              if grep -qxF "$added" <<<"$existing"; then continue; fi
+              IFS=. read -r version type _ <<<"${added#webpack/}"
+              for dump in $existing; do
+                IFS=. read -r our_version our_type _ <<<"${dump#webpack/}"
+                if [ "$type" = "$our_type" ] && [ "$our_version" -ge "$version" ]; then
+                  reason="\`$added\` is not newer than our \`$dump\`"
+                fi
+              done
+            done
+          fi
+          if [ -z "$reason" ]; then
+            git -C "$mappings" config user.name 'github-actions[bot]'
+            git -C "$mappings" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            if ! git -C "$mappings" merge -q --no-edit -m "Merge $upstream ${head:0:7}" "$head"; then
+              reason="it conflicts with mapping-data in $(git -C "$mappings" diff --name-only --diff-filter=U | sed 's/.*/`&`/' | paste -sd ' ')"
+              git -C "$mappings" merge --abort
+            elif ! uv run --locked --no-dev python css_mappings.py "$mappings"; then
+              reason="the mapping pipeline fails on the merged data ([workflow run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID))"
+            else
+              # mapping-data first: if the baseline push fails, the next run merges nothing and retries it.
+              git -C "$mappings" push -q origin HEAD:mapping-data
+              echo "$head" > .github/upstream-baseline
+              git config user.name 'github-actions[bot]'
+              git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+              git commit -qm "chore: adopt $upstream ${head:0:7}" .github/upstream-baseline
+              git push -q origin HEAD:main
+              exit 0
+            fi
+          fi
           commits=$(jq -r '.commits[] | "- `\(.sha[0:7])` \(.commit.message | split("\n")[0]) (\(.commit.committer.date[0:10]))"' <<<"$compare")
           ours=$(gh api "repos/$GITHUB_REPOSITORY/contents/webpack?ref=mapping-data" --jq '.[].name')
           # Mark changed dumps that mapping-data also has: merging them needs care.
@@ -36,4 +88,4 @@ jobs:
           done)
           gh issue create --repo "$GITHUB_REPOSITORY" --assignee "$GITHUB_REPOSITORY_OWNER" \
             --title "DeckThemes mappings changed: ${head:0:7}" \
-            --body "$(printf 'DeckThemes/CSSLoader-Mappings has commits after our baseline `%s`.\n\n[Compare on GitHub](https://github.com/%s/compare/%s...%s)\n\n### Commits\n%s\n\n### Changed files\n%s\n\nTo adopt them, merge these commits into `mapping-data` without replacing its history, then set `.github/upstream-baseline` to `%s`. To skip them, close this issue.\n' "${baseline:0:7}" "$upstream" "$baseline" "$head" "$commits" "$files" "$head")"
+            --body "$(printf 'DeckThemes/CSSLoader-Mappings has commits after our baseline `%s`. They were not merged automatically because %s.\n\n[Compare on GitHub](https://github.com/%s/compare/%s...%s)\n\n### Commits\n%s\n\n### Changed files\n%s\n\nTo adopt them, merge these commits into `mapping-data` without replacing its history, then set `.github/upstream-baseline` to `%s`. To skip them, close this issue.\n' "${baseline:0:7}" "$reason" "$upstream" "$baseline" "$head" "$commits" "$files" "$head")"

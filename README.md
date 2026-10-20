@@ -26,7 +26,7 @@ The lists are public:
 - Each list keeps the names from all earlier Steam versions, so old themes can still be translated.
 - When a new Steam version arrives, the service opens an issue named **"New CSS mappings"** in this repository and assigns it to the owner. GitHub sends its normal issue notification.
 - If no new list was published for 24 hours, the service opens an issue named **"CSS mappings are overdue"**. That issue closes by itself after the next successful publication.
-- Once a day, the service checks whether the DeckThemes team changed their own translation data. If they did, it opens an issue named **"DeckThemes mappings changed"**.
+- Once a day, the service checks whether the DeckThemes team changed their own translation data. If they only added newer Steam versions or corrected translations, the service merges the change by itself, and the next publication uses it. If the change needs a person (for example, changed scripts, an older Steam version, or a conflict with our own corrections), it opens an issue named **"DeckThemes mappings changed"** that gives the reason.
 - GitHub stops scheduled checks in a repository with no activity for 60 days. To prevent that, the service adds an empty commit when the repository has had no commits for 45 days.
 
 GitHub can run the checks a little late.
@@ -37,7 +37,7 @@ GitHub can run the checks a little late.
 
 **When a "CSS mappings are overdue" issue opens:** open the [Publish CSS mappings](https://github.com/beallio/steamui-watch/actions/workflows/publish-mappings.yml) page and look at the newest run. If GitHub shows that the workflow is disabled, enable it.
 
-**When a "DeckThemes mappings changed" issue opens:** the issue lists the new DeckThemes commits and files. Files marked "also in mapping-data" exist in both places, so merge them carefully. To use the changes, merge the commits into the `mapping-data` branch without replacing its history. Then put the newest DeckThemes commit in `.github/upstream-baseline` and close the issue. To skip the changes, just close the issue.
+**When a "DeckThemes mappings changed" issue opens:** the issue gives the reason it was not merged automatically and lists the new DeckThemes commits and files. Files marked "also in mapping-data" exist in both places, so merge them carefully. To use the changes, merge the commits into the `mapping-data` branch without replacing its history. Then put the newest DeckThemes commit in `.github/upstream-baseline` and close the issue. To skip the changes, just close the issue.
 
 If you see no issue and no new run for a long time, check that the workflows on the [Actions page](https://github.com/beallio/steamui-watch/actions) are enabled.
 

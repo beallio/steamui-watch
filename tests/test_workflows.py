@@ -298,11 +298,12 @@ class UpstreamWatchTest(WorkflowTest):
         self.state["api"][f"{self.UPSTREAM}/compare/{BASELINE}...{sha}"] = {
             "commits": [{"sha": sha, "commit": {"message": "New versions\n\ndetails",
                                                 "committer": {"date": "2026-11-01T00:00:00Z"}}}],
-            "files": [{"filename": "webpack/300.beta.json"}, {"filename": "webpack/400.beta.json"},
-                      {"filename": "README.md"}]}
+            "files": [{"filename": "webpack/300.beta.json", "status": "modified"},
+                      {"filename": "webpack/400.beta.json", "status": "added"},
+                      {"filename": "README.md", "status": "modified"}]}
 
     def watch(self):
-        result, _ = self.run_step("upstream-watch.yml", "Report new upstream commits", prepare=write_baseline)
+        result, _ = self.run_step("upstream-watch.yml", "Adopt or report new upstream commits", prepare=write_baseline)
         self.assertEqual(result.returncode, 0, result.stderr)
         return [(issue["title"], issue["state"]) for issue in self.state["issues"]]
 
@@ -315,6 +316,8 @@ class UpstreamWatchTest(WorkflowTest):
         body = self.state["issues"][0]["body"]
         self.assertIn(f"compare/{BASELINE}...{'c' * 40}", body)
         self.assertIn("- `ccccccc` New versions (2026-11-01)", body)
+        self.assertIn("not merged automatically because it changes files other than dumps and matches: "
+                      "`README.md` (modified).", body)
         self.assertIn("- `webpack/300.beta.json` (also in mapping-data)", body)
         self.assertIn("- `webpack/400.beta.json`\n", body)
         self.assertEqual(self.watch(), [("DeckThemes mappings changed: ccccccc", "open")], "no duplicate")
@@ -323,6 +326,128 @@ class UpstreamWatchTest(WorkflowTest):
         self.assertEqual(self.watch(), [("DeckThemes mappings changed: ccccccc", "closed")])
         self.upstream_head("d" * 40)
         self.assertEqual(self.watch()[-1], ("DeckThemes mappings changed: ddddddd", "open"))
+
+    def test_truncated_file_list_is_reported(self):
+        # GitHub stops at 300 files; the hidden rest may change scripts, so even data-only pages need review.
+        self.upstream_head("c" * 40)
+        self.state["api"][f"{self.UPSTREAM}/compare/{BASELINE}...{'c' * 40}"]["files"] = [
+            {"filename": f"webpack/{n}.beta.json", "status": "added"} for n in range(1000, 1300)]
+        self.assertEqual(self.watch(), [("DeckThemes mappings changed: ccccccc", "open")])
+        self.assertIn("because it changes 300 or more files", self.state["issues"][0]["body"])
+
+
+class UpstreamAdoptTest(WorkflowTest):
+    """New upstream dumps and matches merge into mapping-data; riskier changes still open an issue."""
+
+    def commit(self, repo, files, message):
+        for name, text in files.items():
+            (repo / name).parent.mkdir(parents=True, exist_ok=True)
+            (repo / name).write_text(text)
+        git("add", ".", cwd=repo)
+        git("-c", "user.name=t", "-c", "user.email=t@test", "commit", "-qm", message, cwd=repo)
+        return self.rev("HEAD", repo)
+
+    def rev(self, ref, repo):
+        return subprocess.run(["git", "rev-parse", ref], cwd=repo, check=True, capture_output=True, text=True).stdout.strip()
+
+    def setUp(self):
+        super().setUp()
+        self.upstream = self.tmp / "upstream"
+        self.upstream.mkdir()
+        git("init", "-q", "-b", "main", cwd=self.upstream)
+        self.baseline = self.commit(self.upstream, {"webpack/100.stable.json": "{}", "webpack-mappings/shared.json": "a"}, "seed")
+        self.upstream_git = self.tmp / "gh" / "DeckThemes" / "CSSLoader-Mappings.git"
+        git("clone", "-q", "--bare", str(self.upstream), str(self.upstream_git), cwd=self.tmp)
+        # mapping-data: the upstream snapshot plus a retained release with our reviewed matches.
+        data = self.tmp / "data"
+        git("clone", "-q", "-b", "main", str(self.upstream), str(data), cwd=self.tmp)
+        git("checkout", "-qb", "mapping-data", cwd=data)
+        self.commit(data, {"webpack/200.stable.json": "{}", "webpack-mappings/100to200.json": "reviewed"}, "ours")
+        self.data_git = self.tmp / "data.git"
+        git("clone", "-q", "--bare", str(data), str(self.data_git), cwd=self.tmp)
+        self.data_tip = self.rev("mapping-data", self.data_git)
+        self.state["remote"] = f"file://{self.data_git}"
+        self.state["api"]["repos/o/r/contents/webpack?ref=mapping-data"] = [{"name": "100.stable.json"},
+                                                                            {"name": "200.stable.json"}]
+        self.state["api"]["repos/DeckThemes/CSSLoader-Mappings/commits/main"] = {"sha": self.baseline}
+        main = self.tmp / "main"
+        main.mkdir()
+        git("init", "-q", "-b", "main", cwd=main)
+        # Stand-in for css_mappings.py: checks the merged checkout, fails on request.
+        self.commit(main, {".github/upstream-baseline": self.baseline + "\n", "css_mappings.py": textwrap.dedent('''
+            import os, sys
+            from pathlib import Path
+            assert (Path(sys.argv[1]) / "webpack" / "200.stable.json").exists()
+            sys.exit(int(os.environ.get("PIPELINE_EXIT", "0")))
+        ''')}, "seed")
+        self.main_git = self.tmp / "main.git"
+        git("clone", "-q", "--bare", str(main), str(self.main_git), cwd=self.tmp)
+
+    def upstream_change(self, files, message="New versions"):
+        head = self.commit(self.upstream, files, message)
+        git("push", "-q", str(self.upstream_git), "main", cwd=self.upstream)
+        status = {"A": "added", "M": "modified", "D": "removed"}
+        diff = subprocess.run(["git", "diff", "--name-status", self.baseline, head], cwd=self.upstream,
+                              check=True, capture_output=True, text=True).stdout.splitlines()
+        self.state["api"]["repos/DeckThemes/CSSLoader-Mappings/commits/main"] = {"sha": head}
+        self.state["api"][f"repos/DeckThemes/CSSLoader-Mappings/compare/{self.baseline}...{head}"] = {
+            "commits": [{"sha": head, "commit": {"message": message, "committer": {"date": "2026-11-01T00:00:00Z"}}}],
+            "files": [{"filename": name, "status": status[code]} for code, name in (line.split("\t") for line in diff)]}
+        return head
+
+    def watch(self, **env):
+        workspace = self.tmp / f"workspace{self.runners}"
+        git("clone", "-q", "--depth", "1", f"file://{self.main_git}", str(workspace), cwd=self.tmp)
+        result, _ = self.run_step("upstream-watch.yml", "Adopt or report new upstream commits", cwd=workspace,
+                                  GITHUB_SERVER_URL=f"file://{self.tmp / 'gh'}", **env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def remote_baseline(self):
+        return subprocess.run(["git", "show", "main:.github/upstream-baseline"], cwd=self.main_git,
+                              check=True, capture_output=True, text=True).stdout.strip()
+
+    def show(self, path):
+        return subprocess.run(["git", "show", f"mapping-data:{path}"], cwd=self.data_git,
+                              check=True, capture_output=True, text=True).stdout
+
+    def assert_reported(self, head, reason):
+        self.assertEqual([i["title"] for i in self.state["issues"]], [f"DeckThemes mappings changed: {head[:7]}"])
+        self.assertIn(f"not merged automatically because {reason}", self.state["issues"][0]["body"])
+        self.assertEqual(self.remote_baseline(), self.baseline)
+        self.assertEqual(self.show("webpack-mappings/100to200.json"), "reviewed")
+        self.assertEqual(self.rev("mapping-data", self.data_git), self.data_tip)
+
+    def test_newer_dumps_and_match_fixes_merge_without_an_issue(self):
+        head = self.upstream_change({"webpack/300.stable.json": "{}", "webpack-mappings/100to300.json": "{}",
+                                     "webpack-mappings/shared.json": "fixed"})
+        self.watch()
+        self.assertEqual(self.state["issues"], [])
+        self.assertEqual(self.remote_baseline(), head)
+        self.assertEqual(self.show("webpack-mappings/shared.json"), "fixed")
+        self.assertEqual(self.show("webpack-mappings/100to200.json"), "reviewed")
+        self.assertEqual(self.show("webpack/300.stable.json"), "{}")
+        self.watch()
+        self.assertEqual(self.state["issues"], [], "an adopted head needs no issue")
+
+    def test_older_upstream_dump_is_reported(self):
+        head = self.upstream_change({"webpack/150.stable.json": "{}"})
+        self.watch()
+        self.assert_reported(head, "`webpack/150.stable.json` is not newer than our `webpack/200.stable.json`.")
+
+    def test_older_dump_is_reported_when_upstream_also_has_ours(self):
+        head = self.upstream_change({"webpack/150.stable.json": "{}", "webpack/200.stable.json": "{}"})
+        self.watch()
+        self.assert_reported(head, "`webpack/150.stable.json` is not newer than our `webpack/200.stable.json`.")
+
+    def test_conflict_is_reported(self):
+        head = self.upstream_change({"webpack-mappings/100to200.json": "theirs", "webpack/200.stable.json": "{}"})
+        self.watch()
+        self.assert_reported(head, "it conflicts with mapping-data in `webpack-mappings/100to200.json`.")
+
+    def test_pipeline_failure_is_reported(self):
+        head = self.upstream_change({"webpack/300.stable.json": "{}"})
+        self.watch(PIPELINE_EXIT="1")
+        self.assert_reported(head, "the mapping pipeline fails on the merged data")
 
 
 class KeepaliveTest(WorkflowTest):
