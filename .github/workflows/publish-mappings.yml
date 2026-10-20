@@ -29,24 +29,21 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Generate and retain stable and beta mappings
-        id: generate
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           export TMPDIR="${RUNNER_TEMP}/steamui-watch"
           mkdir -m 700 -p "$TMPDIR"
           gh auth setup-git
-          gh repo clone "$GITHUB_REPOSITORY" "$TMPDIR/mappings" -- --branch mapping-data --depth 1
+          # Full history (blobs on demand) so the issue step can list every retained version.
+          gh repo clone "$GITHUB_REPOSITORY" "$TMPDIR/mappings" -- --branch mapping-data --filter=blob:none
           python3 css_mappings.py "$TMPDIR/mappings"
           git -C "$TMPDIR/mappings" config user.name 'github-actions[bot]'
           git -C "$TMPDIR/mappings" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git -C "$TMPDIR/mappings" add webpack webpack-mappings
-          new_dumps=$(git -C "$TMPDIR/mappings" diff --cached --name-only --diff-filter=A -- webpack | xargs -r basename -a -s .json | paste -sd ' ')
           if ! git -C "$TMPDIR/mappings" diff --cached --quiet; then
             git -C "$TMPDIR/mappings" commit -m 'chore(mappings): retain Steam Deck class history'
             git -C "$TMPDIR/mappings" push origin HEAD:mapping-data
-            # Set only after the push: retained data cannot produce a second issue on a later run.
-            echo "new_dumps=$new_dumps" >> "$GITHUB_OUTPUT"
           fi
           mkdir "$TMPDIR/site"
           cp "$TMPDIR/mappings/stable.json" "$TMPDIR/mappings/beta.json" "$TMPDIR/site/"
@@ -57,14 +54,22 @@ jobs:
       - uses: actions/deploy-pages@v5
         id: deployment
       - name: Open an issue for new mappings
-        # always(): the data is already retained, so report it even if deployment failed.
-        if: always() && steps.generate.outputs.new_dumps != ''
+        # always(): report retained versions even if deployment failed.
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-          NEW_DUMPS: ${{ steps.generate.outputs.new_dumps }}
           DEPLOYMENT: ${{ steps.deployment.outcome }}
         run: |
+          mappings="$RUNNER_TEMP/steamui-watch/mappings"
+          [ -d "$mappings/.git" ] || exit 0
+          # Every Steam version the bot pushed must appear in an issue title (open or closed),
+          # so a failed or interrupted run is announced by the next one.
+          retained=$(git -C "$mappings" log origin/mapping-data --author='41898282+github-actions' \
+            --diff-filter=A --name-only --format= -- webpack | xargs -r basename -a -s .json | sort -u)
+          titles=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --limit 1000 --json title --jq '.[].title')
+          new_dumps=$(for v in $retained; do grep -qwF "$v" <<<"$titles" || echo "$v"; done | paste -sd ' ')
+          [ -n "$new_dumps" ] || exit 0
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           gh issue create --repo "$GITHUB_REPOSITORY" --assignee "$GITHUB_REPOSITORY_OWNER" \
-            --title "New CSS mappings: $NEW_DUMPS" \
-            --body "$(printf 'New Steam Deck client versions: `%s`\n\nPages deployment: **%s**\n\n- [Stable mappings](https://beallio.github.io/steamui-watch/stable.json)\n- [Beta mappings](https://beallio.github.io/steamui-watch/beta.json)\n- [Workflow run](%s)\n\nCheck themes on the new version, then close this issue.\n' "$NEW_DUMPS" "$DEPLOYMENT" "$run_url")"
+            --title "New CSS mappings: $new_dumps" \
+            --body "$(printf 'New Steam Deck client versions: `%s`\n\nPages deployment in this run: **%s**\n\n- [Stable mappings](https://beallio.github.io/steamui-watch/stable.json)\n- [Beta mappings](https://beallio.github.io/steamui-watch/beta.json)\n- [Workflow run](%s)\n\nCheck themes on the new version, then close this issue. Keep the version names in the title: they mark the versions as announced.\n' "$new_dumps" "$DEPLOYMENT" "$run_url")"
