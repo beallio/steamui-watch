@@ -1,0 +1,39 @@
+name: Watch DeckThemes mappings
+
+# DeckThemes changes its scripts and data by hand every few months. mapping-data started from
+# their commit in .github/upstream-baseline, so report newer upstream commits for review.
+on:
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Report new upstream commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          upstream=DeckThemes/CSSLoader-Mappings
+          baseline=$(cat .github/upstream-baseline)
+          head=$(gh api "repos/$upstream/commits/main" --jq .sha)
+          [ "$head" != "$baseline" ] || exit 0
+          # One issue per upstream head; a closed issue means "reviewed, not merged".
+          titles=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --limit 1000 --json title --jq '.[].title')
+          if grep -qF "${head:0:7}" <<<"$titles"; then exit 0; fi
+          compare=$(gh api "repos/$upstream/compare/$baseline...$head")
+          commits=$(jq -r '.commits[] | "- `\(.sha[0:7])` \(.commit.message | split("\n")[0]) (\(.commit.committer.date[0:10]))"' <<<"$compare")
+          ours=$(gh api "repos/$GITHUB_REPOSITORY/contents/webpack?ref=mapping-data" --jq '.[].name')
+          # Mark changed dumps that mapping-data also has: merging them needs care.
+          files=$(jq -r '.files[].filename' <<<"$compare" | while read -r f; do
+            if [[ $f == webpack/* ]] && grep -qxF "${f#webpack/}" <<<"$ours"; then echo "- \`$f\` (also in mapping-data)"; else echo "- \`$f\`"; fi
+          done)
+          gh issue create --repo "$GITHUB_REPOSITORY" --assignee "$GITHUB_REPOSITORY_OWNER" \
+            --title "DeckThemes mappings changed: ${head:0:7}" \
+            --body "$(printf 'DeckThemes/CSSLoader-Mappings has commits after our baseline `%s`.\n\n[Compare on GitHub](https://github.com/%s/compare/%s...%s)\n\n### Commits\n%s\n\n### Changed files\n%s\n\nTo adopt them, merge these commits into `mapping-data` without replacing its history, then set `.github/upstream-baseline` to `%s`. To skip them, close this issue.\n' "${baseline:0:7}" "$upstream" "$baseline" "$head" "$commits" "$files" "$head")"
