@@ -45,18 +45,25 @@ You do not need this to use the lists. It is for testing or for checking a Steam
 
 You need Python 3.10 or newer and `git`. No other software is needed.
 
-1. Download the saved Steam history from this repository's `mapping-data` branch:
+1. Download this tool and open its folder:
 
    ```sh
-   git clone --branch mapping-data https://github.com/beallio/steamui-watch.git mapping-data
+   git clone https://github.com/beallio/steamui-watch.git
+   cd steamui-watch
+   ```
+
+2. Download the saved Steam history from the `mapping-data` branch into a folder next to the tool:
+
+   ```sh
+   git clone --branch mapping-data https://github.com/beallio/steamui-watch.git ../mapping-data
    ```
 
    Use this branch, not the DeckThemes repository. It holds every Steam version this service has seen and the hand-made fixes. A copy from DeckThemes does not have them, so its lists would be incomplete.
 
-2. Run the tool:
+3. Run the tool:
 
    ```sh
-   python3 css_mappings.py mapping-data
+   python3 css_mappings.py ../mapping-data
    ```
 
 The tool gets the current Steam Deck versions from Valve and downloads the screen files of any version it has not seen yet. It checks that the download is not damaged. Then it runs the DeckThemes scripts that make `stable.json` and `beta.json`. It checks that both files are complete. This takes a few minutes.
@@ -69,7 +76,7 @@ The tool gets the current Steam Deck versions from Valve and downloads the scree
 
 ## Troubleshooting
 
-- **"is not a CSSLoader-Mappings checkout"**: give the path to the folder you downloaded in step 1.
+- **"is not a CSSLoader-Mappings checkout"**: give the path to the folder you downloaded in step 2.
 - **"SHA-256 does not match the manifest"**: the download is damaged or incomplete. Run the tool again.
 - **"only N class modules found"**: Steam changed how it stores its screen files, and the tool needs an update. Do not use the result.
 - **"has its own history"** or **"is used twice"**: a hand-made fix in `webpack-mappings/` is wrong. Remove that fix.
