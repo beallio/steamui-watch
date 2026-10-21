@@ -1,129 +1,64 @@
 # steamui-watch
 
-Keeps CSS Loader themes working on the Steam Deck after Steam updates, and warns early when a Steam update will probably break Decky Loader.
+Tools to help Steam Deck themes and Decky plugins keep working after Steam updates, and to explore the screen controls that Steam provides.
 
 ## What it does
 
-CSS Loader themes change how the Steam screen looks. To do that, a theme points at parts of the screen by their internal names. Steam gives these parts random names, and an update can change them. When the names change, themes stop working.
+- **Theme updates:** publishes translation lists for CSS Loader. Themes use Steam's internal names to change how the screen looks. Steam updates can change those names; the lists connect older names to newer ones.
+- **Decky warnings:** checks for changes that could break Decky Loader or its plugin library. A warning from a beta version can give maintainers time to fix a problem before it reaches the normal Steam version.
+- **Steam control catalog:** lets plugin authors look at and try Steam's buttons, sliders, menus, icons, and other screen parts on their own computer. It also includes some controls that Decky's plugin library does not offer by name.
 
-This service follows every Steam Deck update. It reads the new screen files directly from Valve and publishes a translation list from the old names to the new names. CSS Loader uses the list to make old themes work on the new Steam version.
+The theme lists and Decky checks run automatically. The catalog is a local tool, not a public website or a plugin to install on a Deck.
 
 ## Do I need to do anything?
 
-No, if you use [beallio's CSS Loader](https://github.com/beallio/SDH-CssLoader). It downloads the newest list every hour.
+If you use a current version of [beallio's CSS Loader](https://github.com/beallio/SDH-CssLoader), it downloads the newest translation list every hour. Older builds may need an update to use these lists.
 
-The standard CSS Loader uses the list from the DeckThemes team instead, not this one.
+The standard CSS Loader uses the DeckThemes team's lists instead, not these.
 
 The lists are public:
 
 - [Stable list](https://beallio.github.io/steamui-watch/stable.json), for the normal Steam Deck version
 - [Beta list](https://beallio.github.io/steamui-watch/beta.json), for the Steam Deck beta
 
+You do not need to run this tool to use the lists. Decky warnings are for maintainers; they do not install fixes on your Deck.
+
 ## What happens automatically
 
-- Every 6 hours, the service checks Valve for new stable and beta versions and publishes both lists.
-- If a check fails, the last good lists stay online.
-- Each list keeps the names from all earlier Steam versions, so old themes can still be translated.
-- When a new Steam version arrives, the service opens an issue named **"New CSS mappings"** in this repository and assigns it to the owner. GitHub sends its normal issue notification.
-- If no new list was published for 24 hours, the service opens an issue named **"CSS mappings are overdue"**. That issue closes by itself after the next successful publication.
-- Once a day, the service checks whether the DeckThemes team changed their own translation data. If they only added newer Steam versions or corrected translations, the service merges the change by itself, and the next publication uses it. If the change needs a person (for example, changed scripts, an older Steam version, or a conflict with our own corrections), it opens an issue named **"DeckThemes mappings changed"** that gives the reason.
-- Once a day, the service checks the newest stable and beta Steam versions for the parts of Steam that Decky Loader and its plugin library look for. It does this twice: once by reading Steam's files, and once by running Decky's real search code against Steam's screen code in a hidden browser. If a part is missing, it opens an issue named **"Decky finders missing in beta 1234567890"** (file check) or **"Decky runtime finders failing in beta 1234567890"** (browser check), or `stable`. A beta warning comes before the same change reaches the normal Steam version.
-- GitHub stops scheduled checks in a repository with no activity for 60 days. To prevent that, the service adds an empty commit when the repository has had no commits for 45 days.
+- Every 6 hours, the service checks Valve's current stable and beta versions and publishes both theme lists. It keeps the older names it has collected, so it can still translate older themes.
+- If publication fails, the last good lists stay online.
+- When the service finds a new Steam version, it opens a **"New CSS mappings"** issue for the owner to review.
+- Every 6 hours, a separate check looks for lists that have not been published for at least 24 hours. It opens a **"CSS mappings are overdue"** issue if needed, and closes it when a later check finds that publication has recovered.
+- Once a day, the service checks for changes to the DeckThemes team's translation data. It adopts changes that pass its safety checks. Other changes open a **"DeckThemes mappings changed"** issue for review.
+- Once a day, it checks the current stable and beta versions for parts of Steam that Decky needs. It reads Steam's files and runs Decky's searches in a browser without Steam. Missing parts open a **"Decky finders missing"** or **"Decky runtime finders failing"** issue.
+- It also checks whether its copies of Decky's searches need review. Changes open a **"Decky finder copies out of date"** issue.
 
-GitHub can run the checks a little late.
+GitHub can run scheduled checks late.
+
+## Limits
+
+These checks help find problems; they do not prove that every theme or plugin works. The service checks the stable and beta versions available at each run, not every version released between runs.
+
+Some Decky checks still need a real Steam Deck or a SteamOS test machine. The catalog cannot preview every control, and it cannot test controller navigation, sounds, or features that need a running Steam client.
+
+Research into suggesting repairs for broken Decky searches is separate from the daily checks. The service does not repair them automatically.
 
 ## For the owner
 
-**When a "New CSS mappings" issue opens:** try a few themes on the new Steam version, then close the issue. Keep the version numbers in the title, because the service uses them to know which versions it has announced.
+- **"New CSS mappings":** check whether the issue says publication succeeded. If it failed or was skipped, wait for a successful publication before testing the new lists. Then try a few themes on the new Steam version and close the issue. Keep the version numbers in the title.
+- **"CSS mappings are overdue":** open [Publish CSS mappings](https://github.com/beallio/steamui-watch/actions/workflows/publish-mappings.yml) and check the newest run. Enable it if it is disabled. If it failed, its log gives the error.
+- **"DeckThemes mappings changed":** review the reason in the issue, then use the [maintenance steps](DEVELOPER.md#reviewing-deckthemes-changes) to accept or skip the changes.
+- **"Decky finders missing" or "Decky runtime finders failing":** confirm the problem on a Deck or SteamOS test machine with that Steam version. Use the [Decky maintenance steps](DEVELOPER.md#keeping-the-decky-checks-current) to correct the check or the Decky search, then close the issue.
+- **"Decky finder copies out of date":** review what changed in Decky and update the checks if needed. Follow the [same maintenance steps](DEVELOPER.md#keeping-the-decky-checks-current) before closing the issue.
 
-**When a "CSS mappings are overdue" issue opens:** open the [Publish CSS mappings](https://github.com/beallio/steamui-watch/actions/workflows/publish-mappings.yml) page and look at the newest run. If GitHub shows that the workflow is disabled, enable it.
+To publish now, open [Publish CSS mappings](https://github.com/beallio/steamui-watch/actions/workflows/publish-mappings.yml), select **Run workflow**, and choose the `main` branch.
 
-**When a "DeckThemes mappings changed" issue opens:** the issue gives the reason it was not merged automatically and lists the new DeckThemes commits and files. Files marked "also in mapping-data" exist in both places, so merge them carefully. To use the changes, merge the commits into the `mapping-data` branch without replacing its history. Then put the newest DeckThemes commit in `.github/upstream-baseline` and close the issue. To skip the changes, just close the issue.
+If no checks have run for a long time, check that they are enabled on the [Actions page](https://github.com/beallio/steamui-watch/actions). The service adds activity during quiet periods to help keep GitHub's scheduled checks enabled, but it cannot run if Actions is disabled.
 
-**When a "Decky finders missing" issue opens:** the issue lists the Decky parts that the service could not find. This check only reads Steam's files, so confirm the problem on a Steam Deck or the SteamOS test machine with that Steam version. Then fix the finder in Decky Loader, or correct the list in `decky_watch.py` if the check was wrong, and close the issue. A closed issue is not opened again for the same Steam version.
+## Development and local tools
 
-**When a "Decky runtime finders failing" issue opens:** the issue lists the Decky parts whose search code found nothing or failed. The browser runs Steam's code without a real Steam client, so confirm the problem on a Steam Deck or the SteamOS test machine. Then fix the finder in Decky Loader, or fix `tools/runtime_probe.ts` if the check was wrong, and close the issue.
-
-If you see no issue and no new run for a long time, check that the workflows on the [Actions page](https://github.com/beallio/steamui-watch/actions) are enabled.
-
-**To publish now:** open the [Publish CSS mappings](https://github.com/beallio/steamui-watch/actions/workflows/publish-mappings.yml) page, select **Run workflow**, and choose the `main` branch.
-
-## Run it on your own computer (advanced)
-
-You do not need this to use the lists. It is for testing or for checking a Steam update by hand. A run on your computer does not publish anything.
-
-You need Python 3.14 or newer and `git`. No other software is needed.
-
-1. Download this tool and open its folder:
-
-   ```sh
-   git clone https://github.com/beallio/steamui-watch.git
-   cd steamui-watch
-   ```
-
-2. Download the saved Steam history from the `mapping-data` branch into a folder next to the tool:
-
-   ```sh
-   git clone --branch mapping-data https://github.com/beallio/steamui-watch.git ../mapping-data
-   ```
-
-   Use this branch, not the DeckThemes repository. It holds every Steam version this service has seen and the hand-made fixes. A copy from DeckThemes does not have them, so its lists would be incomplete.
-
-3. Run the tool:
-
-   ```sh
-   python3 css_mappings.py ../mapping-data
-   ```
-
-The tool gets the current Steam Deck versions from Valve and downloads the screen files of any version it has not seen yet. It checks that the download is not damaged. Then it runs the DeckThemes scripts that make `stable.json` and `beta.json`. It checks that both files are complete. This takes a few minutes.
-
-| Option | What it does |
-|---|---|
-| `--branch stable` or `--branch publicbeta` | Check only the stable or only the beta version. |
-| `--force` | Download and read a version again, even if the tool has seen it. |
-| `--no-pipeline` | Save the new Steam data, but do not make the lists. |
-
-To check the current Steam versions for Decky Loader by hand, run `python3 decky_watch.py reports`. It prints how many Decky parts are missing for each version and writes a report for each version with misses into the `reports` folder. It needs no `mapping-data` folder and takes about a minute. It also accepts `--branch`.
-
-## Troubleshooting
-
-- **"is not a CSSLoader-Mappings checkout"**: give the path to the folder you downloaded in step 2.
-- **"SHA-256 does not match the manifest"**: the download is damaged or incomplete. Run the tool again.
-- **"only N class modules found"**: Steam changed how it stores its screen files, and the tool needs an update. Do not use the result.
-- **"has its own history"** or **"is used twice"**: a hand-made fix in `webpack-mappings/` is wrong. Remove that fix.
-- **HTTP 403 errors**: your network blocks downloads from Valve. Try a different network.
+See [DEVELOPER.md](DEVELOPER.md) for setup, commands, the local catalog, troubleshooting, and maintenance. [Background and research notes](docs/background.md) record the experiments and their limits.
 
 ## Credits and license
 
-The translation lists are built with the DeckThemes team's scripts and their earlier Steam history, used under the [MIT license](https://beallio.github.io/steamui-watch/LICENSE.txt).
-
-## For developers
-
-The project uses [uv](https://docs.astral.sh/uv/) to pick the Python version (3.14, set in `.python-version`) and the type checker [ty](https://docs.astral.sh/ty/):
-
-```sh
-uv run python -m unittest
-uv run ty check
-```
-
-`python3 -m unittest` also works without uv. Some tests also need `jq`; they are skipped if `git` or `jq` is missing. GitHub runs both checks on every push.
-
-`tools/runtime_probe.ts` is the browser check. It runs the real Decky finders against the current Steam versions in headless Chrome, without a Steam Deck. The "Watch Decky finders" workflow runs it daily with the `@decky/ui` version that the decky-loader fork locks. To run it yourself, you need [Bun](https://bun.sh), `unzip`, Chrome, and a checkout of Decky Loader with its frontend packages installed next to this folder (`../decky-loader/frontend/node_modules`).
-
-```sh
-CHROME=/path/to/chrome bun tools/runtime_probe.ts            # stable and beta
-bun tools/runtime_probe.ts --branch publicbeta --decky-ui /path/to/@decky/ui
-```
-
-It prints one line per Steam version and lists every finder that failed. It exits with status 1 if any finder failed; with `--report-dir DIR` it writes one report per failing version instead, as the workflow does. Finders that need the drawn Gaming Mode screen cannot run there; check those on a Steam Deck.
-
-`tools/decky_catalog.ts` builds a picture catalog of the Steam parts that Decky plugins can use. It shows each `@decky/ui` component drawn by Steam's own code, every Steam icon, the CSS class maps, and some Steam components that `@decky/ui` does not include yet, each with the search text that finds it. It needs the same tools as the browser check:
-
-```sh
-CHROME=/path/to/chrome bun tools/decky_catalog.ts                 # stable
-bun tools/decky_catalog.ts --branch publicbeta --out catalog.html
-```
-
-It writes `docs/local/decky-ui-catalog-<branch>-<version>.html` and prints which of the extra components its search text found exactly once. The file contains Valve's styles, icons and images, so Git ignores `docs/local/`; do not publish it.
-
-To try the components, run `bun tools/decky_catalog.ts --serve` and open the address it prints in Chrome or Chromium. That page runs Steam's own code in your browser, so toggles switch, sliders move, menus and dialogs open, and a box in the corner lists each change. Controller navigation, sounds and anything that needs a running Steam do not work there. Stop it with Ctrl-C.
+The translation lists use the DeckThemes team's scripts and earlier Steam history under the [MIT license](https://beallio.github.io/steamui-watch/LICENSE.txt).
