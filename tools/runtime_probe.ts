@@ -21,8 +21,12 @@ import { parseArgs } from "node:util";
 
 const CDN = "https://client-update.steamstatic.com";
 const BOOT_MS = 12_000;
+// Longest wait for one CDP reply. The full probe evaluation takes a few seconds.
+const CDP_TIMEOUT_MS = 120_000;
 const repo = resolve(import.meta.dir, "..");
 const { values: args } = parseArgs({
+  // Imported by the tests: then there are no command-line options to read.
+  args: import.meta.main ? Bun.argv.slice(2) : [],
   options: {
     branch: { type: "string", multiple: true },
     "bundle-dir": { type: "string" },
@@ -128,26 +132,45 @@ export const jsxs = (...a) => window.SP_JSX.jsxs(...a);`);
 type CdpReply = { id: number; result?: Record<string, unknown>; error?: { message: string } };
 type ProbeResult = { boot: Record<string, boolean | number | string>; files: Record<string, string>; loader: Record<string, string> };
 
-function cdp(url: string) {
+/** CDP client. A call rejects when the connection fails or closes, or after `timeoutMs` without a reply. */
+export function cdp(url: string, timeoutMs = CDP_TIMEOUT_MS) {
   const ws = new WebSocket(url);
-  const pending = new Map<number, (reply: CdpReply) => void>();
-  let id = 0;
+  const pending = new Map<number, PromiseWithResolvers<CdpReply>>();
+  const opened = Promise.withResolvers<void>();
+  opened.promise.catch(() => {}); // a send() call reports the failure
+  let lost: Error | undefined;
+  const fail = (reason: string) => {
+    lost ??= new Error(`CDP connection ${reason}`);
+    opened.reject(lost);
+    for (const call of pending.values()) call.reject(lost);
+    pending.clear();
+  };
+  ws.onopen = () => opened.resolve();
+  ws.onerror = () => fail("failed");
+  ws.onclose = () => fail("closed");
   ws.onmessage = (m) => {
     const reply: CdpReply = JSON.parse(String(m.data));
-    pending.get(reply.id)?.(reply);
+    pending.get(reply.id)?.resolve(reply);
     pending.delete(reply.id);
   };
-  const opened = Promise.withResolvers<void>();
-  ws.onopen = () => opened.resolve();
+  let id = 0;
   // T: the CDP result shape for `method`; the protocol defines it, so it is not checked here.
   const send = async <T = Record<string, unknown>>(method: string, params = {}, sessionId?: string): Promise<T> => {
     await opened.promise;
-    const reply = Promise.withResolvers<CdpReply>();
-    pending.set(++id, reply.resolve);
-    ws.send(JSON.stringify({ id, method, params, sessionId }));
-    const { result, error } = await reply.promise;
-    if (error) throw new Error(`${method}: ${error.message}`);
-    return result as unknown as T;
+    if (lost) throw lost;
+    const callId = ++id;
+    const call = Promise.withResolvers<CdpReply>();
+    pending.set(callId, call);
+    const timer = setTimeout(() => call.reject(new Error(`${method}: no CDP reply within ${timeoutMs} ms`)), timeoutMs);
+    try {
+      ws.send(JSON.stringify({ id: callId, method, params, sessionId }));
+      const { result, error } = await call.promise;
+      if (error) throw new Error(`${method}: ${error.message}`);
+      return result as unknown as T;
+    } finally {
+      clearTimeout(timer);
+      pending.delete(callId);
+    }
   };
   return { send, close: () => ws.close() };
 }
@@ -209,23 +232,25 @@ async function writeReport(name: string, label: string, bad: string[]) {
   ].join("\n"));
 }
 
-let ok = true;
-const work = await mkdtemp(join(process.env.TMPDIR ?? tmpdir(), "runtime-probe-"));
-try {
-  const bundles = args["bundle-dir"]
-    ? [{ label: resolve(args["bundle-dir"]), root: resolve(args["bundle-dir"]), report: "local" }]
-    : await Promise.all((args.branch ?? ["stable", "publicbeta"]).map(async (b) => {
-        await mkdir(join(work, b));
-        return fetchBundle(b, join(work, b));
-      }));
-  if (args["report-dir"]) await mkdir(args["report-dir"], { recursive: true });
-  for (const { label, root, report } of bundles) {
-    const files = await buildProbe(root, work);
-    const bad = failures(label, await probe(root, files, work));
-    if (bad.length && args["report-dir"]) await writeReport(report, label, bad);
-    ok &&= bad.length === 0;
+if (import.meta.main) {
+  let ok = true;
+  const work = await mkdtemp(join(process.env.TMPDIR ?? tmpdir(), "runtime-probe-"));
+  try {
+    const bundles = args["bundle-dir"]
+      ? [{ label: resolve(args["bundle-dir"]), root: resolve(args["bundle-dir"]), report: "local" }]
+      : await Promise.all((args.branch ?? ["stable", "publicbeta"]).map(async (b) => {
+          await mkdir(join(work, b));
+          return fetchBundle(b, join(work, b));
+        }));
+    if (args["report-dir"]) await mkdir(args["report-dir"], { recursive: true });
+    for (const { label, root, report } of bundles) {
+      const files = await buildProbe(root, work);
+      const bad = failures(label, await probe(root, files, work));
+      if (bad.length && args["report-dir"]) await writeReport(report, label, bad);
+      ok &&= bad.length === 0;
+    }
+  } finally {
+    if (args.keep) console.log(`kept ${work}`); else await rm(work, { recursive: true, force: true });
   }
-} finally {
-  if (args.keep) console.log(`kept ${work}`); else await rm(work, { recursive: true, force: true });
+  process.exit(ok || args["report-dir"] ? 0 : 1);
 }
-process.exit(ok || args["report-dir"] ? 0 : 1);
