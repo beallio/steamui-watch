@@ -86,6 +86,8 @@ const PROBE = (files: string[]) => `(async (files) => {
   check("router-hook: Route", () => Object.values(backstack()).find((e) => typeof e == "function" && (/routePath:[\\w$]+\\.match\\?\\.path./.test(e.toString()) || /routePath:null===\\(.=.\\.match\\)/.test(e.toString()))));
   check("tabs-hook: QAM renderer", () => Object.values(qam()).find((e) => e?.type?.toString?.()?.includes("QuickAccessMenuBrowserView")));
   check("toaster: Valve toast renderer", () => W.findModuleExport((e) => e?.toString?.()?.includes('controller:"notification",method:')));
+  check("toaster: NotificationStore removal methods", () => typeof window.NotificationStore?.RemoveGroupFromTray === "function"
+    && typeof window.NotificationStore?.RemoveFromToastsWhere === "function");
   // library.ts needs a set m_history, which only the Gaming Mode router sets; check the store's shape.
   check("filepicker: history store", () => W.findModuleExport((e) => typeof e == "object" && "m_history" in e && "m_navigator" in e && "m_locationPathname" in e));
   check("DropdownMultiselect: classes", () => W.findModule((m) => m?.DropDownControlButton && m?.["duration-app-launch"]));

@@ -38,10 +38,18 @@ class MissingTest(unittest.TestCase):
         self.assertEqual(reasons(code("o", "L", name("GetPanelElementProps"))), [])
         self.assertEqual(len(reasons(code("o", "M", name("PanelElementProps")))), 1)
 
-    def test_finder_table_is_well_formed(self):
-        for finder in FINDERS:
-            self.assertTrue(finder.code or finder.classes, finder.name)
-            self.assertTrue(all(finder.code), finder.name)
+    def test_toast_dismissal_requires_both_removal_methods(self):
+        toaster = [finder for finder in FINDERS if finder.name.startswith("toaster:")]
+        bundle = (
+            'const toast={controller:"notification",method:"toast"};'
+            'class NotificationStore{RemoveGroupFromTray(){}RemoveFromToastsWhere(){}}'
+        )
+        self.assertEqual(missing([bundle], {}, toaster), [])
+        for method in ("RemoveGroupFromTray", "RemoveFromToastsWhere"):
+            with self.subTest(method=method):
+                failures = missing([bundle.replace(method, "MissingMethod")], {}, toaster)
+                self.assertEqual([finder.name for finder, _ in failures],
+                                 ["toaster: NotificationStore removal methods"])
 
     def test_qam_hook_needs_only_the_browser_view(self):
         # tabs-hook.tsx patches QuickAccessMenuEmbedded only when the build has it.

@@ -17,7 +17,7 @@ from typing import NamedTuple
 from css_mappings import BRANCHES, download_sources, extract_class_modules, fetch_manifest
 
 UI = "@decky/ui 4.15.1"
-LOADER = "decky-loader fee3a65"
+LOADER = "decky-loader 36c0733"
 
 type Text = str | re.Pattern[str]
 
@@ -140,6 +140,8 @@ FINDERS = (
     # tabs-hook.tsx also patches QuickAccessMenuEmbedded, but only when it exists.
     code(LOADER, "tabs-hook: QAM renderer", "QuickAccessMenuBrowserView"),
     code(LOADER, "toaster: Valve toast renderer", 'controller:"notification",method:'),
+    code(LOADER, "toaster: NotificationStore removal methods",
+         name("RemoveGroupFromTray"), name("RemoveFromToastsWhere")),
     # library.ts finds the routing store by a set m_history. Steam sets it only in
     # UpdateRoutingInfo, which a router component calls from a useEffect.
     code(LOADER, "filepicker: history", re.compile(r"UpdateRoutingInfo\([\w$]+,[\w$]+\)\{this\.m_history=[\w$]+"),
