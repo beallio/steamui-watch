@@ -116,3 +116,14 @@ bun tools/runtime_probe.ts --branch publicbeta --decky-ui /path/to/@decky/ui
 ```
 
 It prints one line per Steam version and lists every finder that failed. It exits with status 1 if any finder failed; with `--report-dir DIR` it writes one report per failing version instead, as the workflow does. Finders that need the drawn Gaming Mode screen cannot run there; check those on a Steam Deck.
+
+`tools/decky_catalog.ts` builds a picture catalog of the Steam parts that Decky plugins can use. It shows each `@decky/ui` component drawn by Steam's own code, every Steam icon, the CSS class maps, and some Steam components that `@decky/ui` does not include yet, each with the search text that finds it. It needs the same tools as the browser check:
+
+```sh
+CHROME=/path/to/chrome bun tools/decky_catalog.ts                 # stable
+bun tools/decky_catalog.ts --branch publicbeta --out catalog.html
+```
+
+It writes `docs/local/decky-ui-catalog-<branch>-<version>.html` and prints which of the extra components its search text found exactly once. The file contains Valve's styles, icons and images, so Git ignores `docs/local/`; do not publish it.
+
+To try the components, run `bun tools/decky_catalog.ts --serve` and open the address it prints in Chrome or Chromium. That page runs Steam's own code in your browser, so toggles switch, sliders move, menus and dialogs open, and a box in the corner lists each change. Controller navigation, sounds and anything that needs a running Steam do not work there. Stop it with Ctrl-C.

@@ -39,7 +39,7 @@ const { values: args } = parseArgs({
 // Every property and call returns the stand-in; `.then(cb)` calls cb with a non-thenable copy, so
 // awaited Steam calls finish (a thenable value would loop forever). Inert once __stubInert is set,
 // or finders such as CommonUIModule would match it.
-const STUB = `(() => {
+export const STUB = `(() => {
   const mk = (thenable) => {
     const f = function () { return window.__stubInert ? undefined : self; };
     const self = new Proxy(f, { get: (t, k) => {
@@ -54,17 +54,20 @@ const STUB = `(() => {
   window.SteamClient = p;
 })();`;
 
+// Same globals decky-loader frontend/src/index.ts sets before importing @decky/ui. Needs `W` = /probe/webpack.js.
+export const GLOBALS = `
+  window.SP_REACT = W.findModule((m) => m.Component && m.PureComponent && m.useLayoutEffect);
+  window.SP_REACTDOM = W.findModule((m) => m.createPortal && m.createRoot) || W.findModule((m) => m.createPortal && m.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE);
+  const jsx = W.findModule((m) => (m.jsx && m.jsxs) || (m.jsx && Object.keys(m).length == 1));
+  window.SP_JSX = jsx?.jsxs ? jsx : jsx && { jsx: jsx.jsx, jsxs: jsx.jsx, Fragment: window.SP_REACT?.Fragment };`;
+
 const PROBE = (files: string[]) => `(async (files) => {
   window.__stubInert = true;
   const out = { boot: {}, files: {}, loader: {} };
   let W;
   try { W = await import("/probe/webpack.js"); } catch (e) { out.boot.webpack = "threw: " + e; return out; }
   out.boot.modules = W.modules.size;
-  // Same globals decky-loader frontend/src/index.ts sets before importing @decky/ui.
-  window.SP_REACT = W.findModule((m) => m.Component && m.PureComponent && m.useLayoutEffect);
-  window.SP_REACTDOM = W.findModule((m) => m.createPortal && m.createRoot) || W.findModule((m) => m.createPortal && m.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE);
-  const jsx = W.findModule((m) => (m.jsx && m.jsxs) || (m.jsx && Object.keys(m).length == 1));
-  window.SP_JSX = jsx?.jsxs ? jsx : jsx && { jsx: jsx.jsx, jsxs: jsx.jsx, Fragment: window.SP_REACT?.Fragment };
+  ${GLOBALS}
   for (const k of ["SP_REACT", "SP_REACTDOM", "SP_JSX"]) out.boot[k] = !!window[k];
   for (const k of ["CommonUIModule", "IconsModule", "ReactRouter"]) out.boot[k] = W[k] != null;
   for (const f of files) {
@@ -93,7 +96,7 @@ const PROBE = (files: string[]) => `(async (files) => {
   return out;
 })(${JSON.stringify(files)})`;
 
-async function fetchBundle(branch: string, dir: string) {
+export async function fetchBundle(branch: string, dir: string) {
   const get = (url: string) => fetch(url, { headers: { "User-Agent": "steamui-watch" } });
   const manifest = await (await get(`${CDN}/steam_client_steamdeck_${branch}_steamrt64`)).text();
   const version = manifest.match(/"version"\s+"(\d+)"/)?.[1];
@@ -108,8 +111,9 @@ async function fetchBundle(branch: string, dir: string) {
   return { label: `${branch} ${version}`, root: join(dir, "steamui"), report: `${branch === "publicbeta" ? "beta" : branch}-${version}` };
 }
 
-async function buildProbe(root: string, work: string) {
-  const ui = join(args["decky-ui"]!, "dist");
+/** Bundle @decky/ui into ROOT/probe: webpack.js, the files PROBE checks, and `extra` entry files. */
+export async function buildProbe(root: string, work: string, uiPackage = args["decky-ui"]!, extra: string[] = []) {
+  const ui = join(uiPackage, "dist");
   const shims = join(work, "shims");
   // decky-loader's rollup maps these imports to the globals PROBE sets.
   await Bun.write(join(shims, "react.js"), `export default window.SP_REACT; const R = () => window.SP_REACT;
@@ -120,7 +124,7 @@ export const jsxs = (...a) => window.SP_JSX.jsxs(...a);`);
   const files = ["modules/Router.js", "utils/static-classes.js", "deck-hooks/useParams.js",
     ...[...new Bun.Glob("components/*.js").scanSync(ui)].filter((f) => !f.endsWith("index.js")).sort()];
   const result = await Bun.build({
-    entrypoints: ["webpack.js", ...files].map((f) => join(ui, f)),
+    entrypoints: ["webpack.js", ...files, ...extra].map((f) => join(ui, f)),
     root: ui, outdir: join(root, "probe"), format: "esm", target: "browser", splitting: true,
     plugins: [{ name: "react-globals", setup(build) {
       build.onResolve({ filter: /^react\/jsx-runtime$/ }, () => ({ path: join(shims, "jsx.js") }));
@@ -134,8 +138,20 @@ export const jsxs = (...a) => window.SP_JSX.jsxs(...a);`);
 type CdpReply = { id: number; result?: Record<string, unknown>; error?: { message: string } };
 type ProbeResult = { boot: Record<string, boolean | number | string>; files: Record<string, string>; loader: Record<string, string> };
 
+/** A CDP connection. `send`'s T is the protocol's result shape for `method`; it is not checked. */
+export interface CdpClient {
+  send<T = Record<string, unknown>>(method: string, params?: object, sessionId?: string): Promise<T>;
+  close(): void;
+}
+
+/** A booted Steam page: `evaluate` runs an expression (awaited, returned by value); `close` stops Chrome and the server. */
+export interface SteamPage {
+  evaluate<T>(expression: string): Promise<T>;
+  close(): Promise<void>;
+}
+
 /** CDP client. A call rejects when the connection fails or closes, or after `timeoutMs` without a reply. */
-export function cdp(url: string, timeoutMs = CDP_TIMEOUT_MS) {
+export function cdp(url: string, timeoutMs = CDP_TIMEOUT_MS): CdpClient {
   const ws = new WebSocket(url);
   const pending = new Map<number, PromiseWithResolvers<CdpReply>>();
   const opened = Promise.withResolvers<void>();
@@ -177,7 +193,11 @@ export function cdp(url: string, timeoutMs = CDP_TIMEOUT_MS) {
   return { send, close: () => ws.close() };
 }
 
-async function probe(root: string, files: string[], work: string) {
+/**
+ * Serve the extracted bundle at ROOT, open its page in headless Chrome with the stand-in `SteamClient`,
+ * and wait for Steam's app to boot. `evaluate` runs an expression in the page (awaited, returned by value).
+ */
+export async function openSteamPage(root: string, work: string, chrome = args.chrome!): Promise<SteamPage> {
   const server = Bun.serve({ port: 0, hostname: "127.0.0.1", async fetch(req) {
     const path = decodeURIComponent(new URL(req.url).pathname);
     const file = Bun.file(join(root, path));
@@ -185,33 +205,51 @@ async function probe(root: string, files: string[], work: string) {
     // SharedJSContext runs at /routes/...; the app is a single page.
     return path.startsWith("/routes/") ? new Response(Bun.file(join(root, "index.html"))) : new Response(null, { status: 404 });
   } });
-  const chrome = Bun.spawn([args.chrome!, "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${join(work, "profile")}`,
+  const proc = Bun.spawn([chrome, "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${join(work, "profile")}`,
     "--no-first-run", "--no-default-browser-check", "about:blank"], { stderr: "pipe", stdout: "ignore" });
+  let browser: CdpClient | undefined;
+  const close = async () => {
+    browser?.close();
+    proc.kill();
+    await proc.exited;
+    server.stop(true);
+  };
   try {
     let log = "";
-    const reader = chrome.stderr.getReader();
+    const reader = proc.stderr.getReader();
     while (!/DevTools listening on (ws:\S+)/.test(log)) {
       const { value, done } = await reader.read();
       if (done) throw new Error(`Chrome exited before DevTools was ready:\n${log}`);
       log += new TextDecoder().decode(value);
     }
     reader.releaseLock();
-    const browser = cdp(log.match(/DevTools listening on (ws:\S+)/)![1]);
+    browser = cdp(log.match(/DevTools listening on (ws:\S+)/)![1]);
     const { targetId } = await browser.send<{ targetId: string }>("Target.createTarget", { url: "about:blank" });
     const { sessionId } = await browser.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
     await browser.send("Page.enable", {}, sessionId);
     await browser.send("Page.addScriptToEvaluateOnNewDocument", { source: STUB }, sessionId);
     await browser.send("Page.navigate", { url: `http://127.0.0.1:${server.port}/routes/library/home/` }, sessionId);
     await Bun.sleep(BOOT_MS);
-    const { result, exceptionDetails } = await browser.send<{ result: { value: ProbeResult }; exceptionDetails?: unknown }>(
-      "Runtime.evaluate", { expression: PROBE(files), awaitPromise: true, returnByValue: true }, sessionId);
-    browser.close();
-    if (exceptionDetails) throw new Error(`probe failed: ${JSON.stringify(exceptionDetails).slice(0, 500)}`);
-    return result.value;
+    const page = browser;
+    const evaluate = async <T>(expression: string): Promise<T> => {
+      const { result, exceptionDetails } = await page.send<{ result: { value: T }; exceptionDetails?: unknown }>(
+        "Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }, sessionId);
+      if (exceptionDetails) throw new Error(`page evaluation failed: ${JSON.stringify(exceptionDetails).slice(0, 500)}`);
+      return result.value;
+    };
+    return { evaluate, close };
+  } catch (e) {
+    await close();
+    throw e;
+  }
+}
+
+async function probe(root: string, files: string[], work: string) {
+  const page = await openSteamPage(root, work);
+  try {
+    return await page.evaluate<ProbeResult>(PROBE(files));
   } finally {
-    chrome.kill();
-    await chrome.exited;
-    server.stop(true);
+    await page.close();
   }
 }
 
