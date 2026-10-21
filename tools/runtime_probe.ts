@@ -15,7 +15,6 @@
  */
 import { $ } from "bun";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
@@ -234,7 +233,10 @@ async function writeReport(name: string, label: string, bad: string[]) {
 
 if (import.meta.main) {
   let ok = true;
-  const work = await mkdtemp(join(process.env.TMPDIR ?? tmpdir(), "runtime-probe-"));
+  // Project convention (AGENTS.md): $TMPDIR, else /var/tmp/omp-1000, never /tmp.
+  const temp = process.env.TMPDIR || "/var/tmp/omp-1000";
+  await mkdir(temp, { recursive: true, mode: 0o700 });
+  const work = await mkdtemp(join(temp, "runtime-probe-"));
   try {
     const bundles = args["bundle-dir"]
       ? [{ label: resolve(args["bundle-dir"]), root: resolve(args["bundle-dir"]), report: "local" }]
