@@ -140,7 +140,10 @@ FINDERS = (
     # tabs-hook.tsx also patches QuickAccessMenuEmbedded, but only when it exists.
     code(LOADER, "tabs-hook: QAM renderer", "QuickAccessMenuBrowserView"),
     code(LOADER, "toaster: Valve toast renderer", 'controller:"notification",method:'),
-    code(LOADER, "filepicker: history", name("m_history")),
+    # library.ts finds the routing store by a set m_history. Steam sets it only in
+    # UpdateRoutingInfo, which a router component calls from a useEffect.
+    code(LOADER, "filepicker: history", re.compile(r"UpdateRoutingInfo\([\w$]+,[\w$]+\)\{this\.m_history=[\w$]+"),
+         ".UpdateRoutingInfo("),
     classes(LOADER, "Markdown: EventDetailsBody", "EventDetailsBody"),
     classes(LOADER, "Markdown: event link", "Link", module="43088"),
     classes(LOADER, "Toast: templateClasses", "ShortTemplate"),
