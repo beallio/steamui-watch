@@ -87,6 +87,9 @@ const PROBE = (files: string[]) => `(async (files) => {
   check("filepicker: history store", () => W.findModuleExport((e) => typeof e == "object" && "m_history" in e && "m_navigator" in e && "m_locationPathname" in e));
   check("DropdownMultiselect: classes", () => W.findModule((m) => m?.DropDownControlButton && m?.["duration-app-launch"]));
   check("Store: TabCount", () => W.findModule((m) => m?.TabCount && m?.TabTitle));
+  // @decky/ui finders whose result is private, so a failure leaves no null export.
+  // components/Modal.js: showModal is always a function; it calls the private showModalRaw.
+  check("@decky/ui Modal.js: showModalRaw", () => W.findModuleExport((e) => typeof e === "function" && e.toString?.().includes("props.bDisableBackgroundDismiss") && !e?.prototype?.Cancel));
   return out;
 })(${JSON.stringify(files)})`;
 
