@@ -44,6 +44,43 @@ jobs:
           mkdir "$TMPDIR/decky-ui"
           tar -xzf "$TMPDIR/decky-ui-$ui.tgz" -C "$TMPDIR/decky-ui"
           bun tools/runtime_probe.ts --decky-ui "$TMPDIR/decky-ui/package" --report-dir "$RUNNER_TEMP/steamui-watch/reports/runtime"
+      - name: Compare the finder copies with the decky-loader fork
+        # decky_watch.py and tools/runtime_probe.ts copy finders by hand; report when the fork moves on.
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          fork=beallio/decky-loader
+          reports="$RUNNER_TEMP/steamui-watch/reports/copies"
+          mkdir -p "$reports"
+          labels=$(uv run --locked --no-dev python -c 'import decky_watch as d; print(d.UI.split()[-1], d.LOADER.split()[-1])')
+          read -r ui_copied loader_copied <<<"$labels"
+          # awk reads to the end: exiting early would kill gh with SIGPIPE under pipefail.
+          ui_locked=$(gh api "repos/$fork/contents/frontend/pnpm-lock.yaml" --jq .content | base64 -d |
+            awk '/^      .@decky\/ui.:$/ && !found { getline; getline; sub(/^ *version: */, ""); sub(/[(].*/, ""); print; found = 1 }')
+          [ -n "$ui_locked" ] || { echo 'no @decky/ui version in the decky-loader lock file' >&2; exit 1; }
+          compare=$(gh api "repos/$fork/compare/$loader_copied...main")
+          # Changed frontend lines that search Steam's code or use Steam's globals. A heuristic: it
+          # can miss a change, and it reports some changes that need no update.
+          pattern='find[A-Z][A-Za-z]*\(|toString\(|createPropListRegex|SteamClient\.|window\.[A-Z][A-Za-z]*(Store|Manager)\b'
+          changes=$(jq -r --arg re "$pattern" '.files[] | select(.filename | startswith("frontend/src/")) | .filename as $f
+            | if .patch == null then "\($f): (GitHub shows no diff for this file)"
+              else .patch | split("\n")[] | select(test("^[+-]") and test($re)) | "\($f): \(.)" end' <<<"$compare")
+          # The compare API lists at most 300 files.
+          truncated=$(jq '.files | length >= 300' <<<"$compare")
+          if [ "$ui_locked" = "$ui_copied" ] && [ -z "$changes" ] && [ "$truncated" = false ]; then exit 0; fi
+          # The same differences give the same ID, so an issue opens once per new difference.
+          id=$(printf '%s\n%s\n%s\n' "$ui_locked" "$changes" "$truncated" | sha256sum | cut -c1-8)
+          {
+            printf 'The finder copies in `decky_watch.py` and `tools/runtime_probe.ts` follow `@decky/ui` %s and decky-loader `%s`. The fork has moved on.\n\n' "$ui_copied" "$loader_copied"
+            printf -- '- `@decky/ui` locked in the fork: `%s`\n' "$ui_locked"
+            [ "$truncated" = false ] || printf -- '- The fork changed 300 or more files; GitHub lists only the first 300, so check the full comparison.\n'
+            if [ -n "$changes" ]; then
+              printf -- '- Changed lines that search Steam'"'"'s code or use Steam'"'"'s globals:\n\n```diff\n%s\n```\n' "$changes"
+            fi
+            printf '\n[Compare](https://github.com/%s/compare/%s...main)\n\n' "$fork" "$loader_copied"
+            printf 'Update `FINDERS`, `UI` and `LOADER` in `decky_watch.py` and the predicates in `tools/runtime_probe.ts` where needed. Then set `LOADER` to the reviewed fork commit and close this issue.\n'
+          } > "$reports/$id.md"
       - name: Open issues for missing Decky finders
         # always(): report what either check found, even if the other one failed.
         if: always()
@@ -52,11 +89,12 @@ jobs:
         run: |
           reports="$RUNNER_TEMP/steamui-watch/reports"
           titles=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --limit 1000 --json title --jq '.[].title')
-          for report in "$reports"/static/*.md "$reports"/runtime/*.md; do
+          for report in "$reports"/static/*.md "$reports"/runtime/*.md "$reports"/copies/*.md; do
             [ -e "$report" ] || continue
             name=$(basename "$report" .md)
             case "$report" in
               */runtime/*) title="Decky runtime finders failing in ${name/-/ }" ;;
+              */copies/*) title="Decky finder copies out of date ($name)" ;;
               *) title="Decky finders missing in ${name/-/ }" ;;
             esac
             # One issue per check and client version; a closed issue means "checked".

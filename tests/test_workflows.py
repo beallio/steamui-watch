@@ -1,5 +1,6 @@
 """Run the real shell steps of the GitHub workflows against local Git remotes and a fake `gh`."""
 
+import base64
 import json
 import os
 import re
@@ -364,6 +365,63 @@ class DeckyWatchTest(WorkflowTest):
         self.assertEqual(self.watch(static="beta-200 stable-100 beta-2001", runtime="beta-200")[3:], [
             ("Decky finders missing in beta 2001", "open")],
             "a closed issue is not reopened, and a version that extends another's number is not a duplicate")
+
+
+class DeckyCopiesTest(WorkflowTest):
+    """Report when the decky-loader fork moves past the finder copies in this repo."""
+
+    FORK = "repos/beallio/decky-loader"
+    LOCK = "lockfileVersion: '9.0'\nimporters:\n  .:\n    dependencies:\n      '@decky/ui':\n        specifier: ^{v}\n        version: {v}\n"
+
+    def setUp(self):
+        super().setUp()
+        self.workspace = self.tmp / "workspace"
+        self.workspace.mkdir()
+        (self.workspace / "decky_watch.py").write_text('UI = "@decky/ui 4.15.1"\nLOADER = "decky-loader aaaaaaa"\n')
+        self.fork(ui="4.15.1", files=[])
+
+    def fork(self, ui, files):
+        lock = self.LOCK.replace("{v}", ui)
+        self.state["api"][f"{self.FORK}/contents/frontend/pnpm-lock.yaml"] = {"content": base64.b64encode(lock.encode()).decode()}
+        self.state["api"][f"{self.FORK}/compare/aaaaaaa...main"] = {"files": files}
+
+    def watch(self):
+        result, runner = self.run_step("decky-watch.yml", "Compare the finder copies with the decky-loader fork", cwd=self.workspace)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        copy = lambda temp: shutil.copytree(runner / "steamui-watch", temp / "steamui-watch")
+        result, _ = self.run_step("decky-watch.yml", "Open issues for missing Decky finders", prepare=copy)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return [issue["title"] for issue in self.state["issues"]]
+
+    def test_unrelated_changes_open_nothing(self):
+        self.fork(ui="4.15.1", files=[
+            {"filename": "frontend/src/components/Store.tsx", "patch": "@@ -1 +1 @@\n-const a = 1;\n+const a = 2;"},
+            {"filename": "backend-rust/src/main.rs", "patch": "@@ -1 +1 @@\n-findModule(\n+findModule(x"}])
+        self.assertEqual(self.watch(), [])
+
+    def test_finder_change_and_new_version_open_one_issue_each(self):
+        toaster = {"filename": "frontend/src/toaster.tsx",
+                   "patch": "@@ -1,2 +1,2 @@\n context\n-    window.NotificationStore.Remove(group);\n+    window.NotificationStore.RemoveWhere(id);"}
+        self.fork(ui="4.15.1", files=[toaster])
+        [title] = self.watch()
+        self.assertRegex(title, r"^Decky finder copies out of date \([0-9a-f]{8}\)$")
+        body = self.state["issues"][0]["body"]
+        self.assertIn("frontend/src/toaster.tsx: +    window.NotificationStore.RemoveWhere(id);", body)
+        self.assertIn("frontend/src/toaster.tsx: -    window.NotificationStore.Remove(group);", body)
+        self.assertNotIn("context", body)
+        self.assertEqual(self.watch(), [title], "the same difference opens no second issue")
+        self.state["issues"][0]["state"] = "closed"
+        self.fork(ui="4.16.0", files=[toaster])
+        titles = self.watch()
+        self.assertEqual(len(titles), 2, "a new @decky/ui version is a new difference")
+        self.assertIn("`@decky/ui` locked in the fork: `4.16.0`", self.state["issues"][1]["body"])
+
+    def test_missing_lock_version_fails(self):
+        self.state["api"][f"{self.FORK}/contents/frontend/pnpm-lock.yaml"] = {"content": base64.b64encode(b"importers: {}\n").decode()}
+        result, _ = self.run_step("decky-watch.yml", "Compare the finder copies with the decky-loader fork", cwd=self.workspace)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no @decky/ui version", result.stderr)
+
 
 
 class UpstreamAdoptTest(WorkflowTest):
