@@ -105,3 +105,12 @@ uv run ty check
 ```
 
 `python3 -m unittest` also works without uv. Some tests also need `jq`; they are skipped if `git` or `jq` is missing. GitHub runs both checks on every push.
+
+`tools/runtime_probe.ts` runs the real Decky finders against the current Steam versions in headless Chrome, without a Steam Deck. It needs [Bun](https://bun.sh), `unzip`, Chrome, and a checkout of Decky Loader with its frontend packages installed next to this folder (`../decky-loader/frontend/node_modules`). GitHub does not run it.
+
+```sh
+CHROME=/path/to/chrome bun tools/runtime_probe.ts            # stable and beta
+bun tools/runtime_probe.ts --branch publicbeta --decky-ui /path/to/@decky/ui
+```
+
+It prints one line per Steam version and lists every finder that failed. It exits with status 1 if any finder failed. Finders that need the drawn Gaming Mode screen cannot run there; check those on a Steam Deck.
