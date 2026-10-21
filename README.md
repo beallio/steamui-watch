@@ -27,7 +27,7 @@ The lists are public:
 - When a new Steam version arrives, the service opens an issue named **"New CSS mappings"** in this repository and assigns it to the owner. GitHub sends its normal issue notification.
 - If no new list was published for 24 hours, the service opens an issue named **"CSS mappings are overdue"**. That issue closes by itself after the next successful publication.
 - Once a day, the service checks whether the DeckThemes team changed their own translation data. If they only added newer Steam versions or corrected translations, the service merges the change by itself, and the next publication uses it. If the change needs a person (for example, changed scripts, an older Steam version, or a conflict with our own corrections), it opens an issue named **"DeckThemes mappings changed"** that gives the reason.
-- Once a day, the service checks the newest stable and beta Steam versions for the parts of Steam that Decky Loader and its plugin library look for. If a part is missing, it opens an issue named **"Decky finders missing in beta 1234567890"** (or `stable`). A beta warning comes before the same change reaches the normal Steam version.
+- Once a day, the service checks the newest stable and beta Steam versions for the parts of Steam that Decky Loader and its plugin library look for. It does this twice: once by reading Steam's files, and once by running Decky's real search code against Steam's screen code in a hidden browser. If a part is missing, it opens an issue named **"Decky finders missing in beta 1234567890"** (file check) or **"Decky runtime finders failing in beta 1234567890"** (browser check), or `stable`. A beta warning comes before the same change reaches the normal Steam version.
 - GitHub stops scheduled checks in a repository with no activity for 60 days. To prevent that, the service adds an empty commit when the repository has had no commits for 45 days.
 
 GitHub can run the checks a little late.
@@ -41,6 +41,8 @@ GitHub can run the checks a little late.
 **When a "DeckThemes mappings changed" issue opens:** the issue gives the reason it was not merged automatically and lists the new DeckThemes commits and files. Files marked "also in mapping-data" exist in both places, so merge them carefully. To use the changes, merge the commits into the `mapping-data` branch without replacing its history. Then put the newest DeckThemes commit in `.github/upstream-baseline` and close the issue. To skip the changes, just close the issue.
 
 **When a "Decky finders missing" issue opens:** the issue lists the Decky parts that the service could not find. This check only reads Steam's files, so confirm the problem on a Steam Deck or the SteamOS test machine with that Steam version. Then fix the finder in Decky Loader, or correct the list in `decky_watch.py` if the check was wrong, and close the issue. A closed issue is not opened again for the same Steam version.
+
+**When a "Decky runtime finders failing" issue opens:** the issue lists the Decky parts whose search code found nothing or failed. The browser runs Steam's code without a real Steam client, so confirm the problem on a Steam Deck or the SteamOS test machine. Then fix the finder in Decky Loader, or fix `tools/runtime_probe.ts` if the check was wrong, and close the issue.
 
 If you see no issue and no new run for a long time, check that the workflows on the [Actions page](https://github.com/beallio/steamui-watch/actions) are enabled.
 
@@ -106,11 +108,11 @@ uv run ty check
 
 `python3 -m unittest` also works without uv. Some tests also need `jq`; they are skipped if `git` or `jq` is missing. GitHub runs both checks on every push.
 
-`tools/runtime_probe.ts` runs the real Decky finders against the current Steam versions in headless Chrome, without a Steam Deck. It needs [Bun](https://bun.sh), `unzip`, Chrome, and a checkout of Decky Loader with its frontend packages installed next to this folder (`../decky-loader/frontend/node_modules`). GitHub does not run it.
+`tools/runtime_probe.ts` is the browser check. It runs the real Decky finders against the current Steam versions in headless Chrome, without a Steam Deck. The "Watch Decky finders" workflow runs it daily with the `@decky/ui` version that the decky-loader fork locks. To run it yourself, you need [Bun](https://bun.sh), `unzip`, Chrome, and a checkout of Decky Loader with its frontend packages installed next to this folder (`../decky-loader/frontend/node_modules`).
 
 ```sh
 CHROME=/path/to/chrome bun tools/runtime_probe.ts            # stable and beta
 bun tools/runtime_probe.ts --branch publicbeta --decky-ui /path/to/@decky/ui
 ```
 
-It prints one line per Steam version and lists every finder that failed. It exits with status 1 if any finder failed. Finders that need the drawn Gaming Mode screen cannot run there; check those on a Steam Deck.
+It prints one line per Steam version and lists every finder that failed. It exits with status 1 if any finder failed; with `--report-dir DIR` it writes one report per failing version instead, as the workflow does. Finders that need the drawn Gaming Mode screen cannot run there; check those on a Steam Deck.

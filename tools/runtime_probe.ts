@@ -1,15 +1,17 @@
 #!/usr/bin/env bun
 /**
  * Run the real @decky/ui finders and the decky-loader runtime finders against a Steam Deck
- * client bundle in headless Chrome, without Steam. Development tool; CI does not run it.
+ * client bundle in headless Chrome, without Steam. decky-watch.yml runs it daily.
  *
  *   bun tools/runtime_probe.ts [--branch stable|publicbeta]... [--bundle-dir DIR]
- *                              [--decky-ui PATH] [--chrome PATH] [--keep]
+ *                              [--decky-ui PATH] [--chrome PATH] [--report-dir DIR] [--keep]
  *
  * Steam's page boots against a stand-in `SteamClient` that answers every call, then the stand-in
  * goes inert and each @decky/ui file is imported on its own, so one failing file cannot hide the
- * rest. Exit status 1 when any finder fails. See docs/background.md, "Headless runtime trial".
- * The loader's React-tree finders need the Gaming Mode window, which this page never draws.
+ * rest. Exit status 1 when any finder fails, unless --report-dir is given: then each branch
+ * with failures gets REPORT_DIR/<stable|beta>-<version>.md and the exit status only reports errors.
+ * See docs/background.md, "Headless runtime trial". The loader's React-tree finders need the
+ * Gaming Mode window, which this page never draws.
  */
 import { $ } from "bun";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
@@ -27,6 +29,7 @@ const { values: args } = parseArgs({
     "decky-ui": { type: "string", default: resolve(repo, "../decky-loader/frontend/node_modules/@decky/ui") },
     chrome: { type: "string", default: process.env.CHROME ?? "google-chrome" },
     keep: { type: "boolean", default: false },
+    "report-dir": { type: "string" },
   },
 });
 
@@ -96,7 +99,7 @@ async function fetchBundle(branch: string, dir: string) {
     throw new Error(`${fields.file}: SHA-256 does not match the manifest`);
   await Bun.write(join(dir, "bundle.zip"), zip);
   await $`unzip -q ${join(dir, "bundle.zip")} -d ${dir}`;
-  return { label: `${branch} ${version}`, root: join(dir, "steamui") };
+  return { label: `${branch} ${version}`, root: join(dir, "steamui"), report: `${branch === "publicbeta" ? "beta" : branch}-${version}` };
 }
 
 async function buildProbe(root: string, work: string) {
@@ -187,28 +190,42 @@ async function probe(root: string, files: string[], work: string) {
   }
 }
 
-function report(label: string, out: ProbeResult) {
+function failures(label: string, out: ProbeResult) {
   const bad = [...Object.entries(out.boot), ...Object.entries(out.files), ...Object.entries(out.loader)]
-    .filter(([k, v]) => k !== "modules" && v !== true && v !== "ok");
+    .filter(([k, v]) => k !== "modules" && v !== true && v !== "ok")
+    .map(([k, v]) => `${k}: ${v === false ? "missing" : v}`);
   console.log(`${label}: ${out.boot.modules ?? 0} modules; ${bad.length ? bad.length + " failing" : "all finders ok"}`);
-  for (const [k, v] of bad) console.log(`  ${k}: ${v === false ? "missing" : v}`);
-  return bad.length === 0;
+  for (const line of bad) console.log(`  ${line}`);
+  return bad;
+}
+
+async function writeReport(name: string, label: string, bad: string[]) {
+  const ui = (await Bun.file(join(args["decky-ui"]!, "package.json")).json()).version;
+  await Bun.write(join(args["report-dir"]!, `${name}.md`), [
+    `Headless runtime check of the Steam Deck client \`${label}\` with \`@decky/ui\` ${ui}.`, "",
+    ...bad.map((line) => `- ${line.replace(/^([^:]+):/, "**$1**:")}`), "",
+    "The page ran without Steam, against a stand-in `SteamClient`. Confirm on the SteamOS VM, then update the finder "
+      + "or `tools/runtime_probe.ts`. Close this issue when done.", "",
+  ].join("\n"));
 }
 
 let ok = true;
 const work = await mkdtemp(join(process.env.TMPDIR ?? tmpdir(), "runtime-probe-"));
 try {
   const bundles = args["bundle-dir"]
-    ? [{ label: resolve(args["bundle-dir"]), root: resolve(args["bundle-dir"]) }]
+    ? [{ label: resolve(args["bundle-dir"]), root: resolve(args["bundle-dir"]), report: "local" }]
     : await Promise.all((args.branch ?? ["stable", "publicbeta"]).map(async (b) => {
         await mkdir(join(work, b));
         return fetchBundle(b, join(work, b));
       }));
-  for (const { label, root } of bundles) {
+  if (args["report-dir"]) await mkdir(args["report-dir"], { recursive: true });
+  for (const { label, root, report } of bundles) {
     const files = await buildProbe(root, work);
-    ok = report(label, await probe(root, files, work)) && ok;
+    const bad = failures(label, await probe(root, files, work));
+    if (bad.length && args["report-dir"]) await writeReport(report, label, bad);
+    ok &&= bad.length === 0;
   }
 } finally {
   if (args.keep) console.log(`kept ${work}`); else await rm(work, { recursive: true, force: true });
 }
-process.exit(ok ? 0 : 1);
+process.exit(ok || args["report-dir"] ? 0 : 1);

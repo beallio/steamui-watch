@@ -338,35 +338,32 @@ class UpstreamWatchTest(WorkflowTest):
 
 
 class DeckyWatchTest(WorkflowTest):
-    def setUp(self):
-        super().setUp()
-        self.workspace = self.tmp / "workspace"
-        self.workspace.mkdir()
-        # Stand-in for decky_watch.py: writes the reports named in REPORTS.
-        (self.workspace / "decky_watch.py").write_text(textwrap.dedent('''
-            import os, sys
-            from pathlib import Path
-            out = Path(sys.argv[1])
-            out.mkdir(parents=True)
-            for name in os.environ["REPORTS"].split():
-                (out / f"{name}.md").write_text(f"missing in {name}\\n")
-        '''))
+    @staticmethod
+    def reports(**by_check):
+        """Write <check>/<name>.md reports where the checks leave them."""
+        def prepare(runner_temp):
+            for check, names in by_check.items():
+                folder = runner_temp / "steamui-watch" / "reports" / check
+                folder.mkdir(parents=True)
+                for name in names.split():
+                    (folder / f"{name}.md").write_text(f"{check} {name}\n")
+        return prepare
 
-    def watch(self, reports):
-        result, _ = self.run_step("decky-watch.yml", "Report missing Decky finders", cwd=self.workspace, REPORTS=reports)
+    def watch(self, **by_check):
+        result, _ = self.run_step("decky-watch.yml", "Open issues for missing Decky finders", prepare=self.reports(**by_check))
         self.assertEqual(result.returncode, 0, result.stderr)
         return [(issue["title"], issue["state"]) for issue in self.state["issues"]]
 
-    def test_one_issue_per_client_version(self):
-        self.assertEqual(self.watch(""), [])
-        self.assertEqual(self.watch("beta-200 stable-100"), [("Decky finders missing in beta 200", "open"),
-                                                              ("Decky finders missing in stable 100", "open")])
-        self.assertEqual(self.state["issues"][0]["body"], "missing in beta-200\n")
+    def test_one_issue_per_check_and_client_version(self):
+        self.assertEqual(self.watch(), [])
+        self.assertEqual(self.watch(static="beta-200 stable-100", runtime="beta-200"), [
+            ("Decky finders missing in beta 200", "open"), ("Decky finders missing in stable 100", "open"),
+            ("Decky runtime finders failing in beta 200", "open")])
+        self.assertEqual(self.state["issues"][2]["body"], "runtime beta-200\n")
         self.state["issues"][0]["state"] = "closed"
-        self.assertEqual(self.watch("beta-200 stable-100 beta-2001")[1:], [
-            ("Decky finders missing in stable 100", "open"), ("Decky finders missing in beta 2001", "open")],
+        self.assertEqual(self.watch(static="beta-200 stable-100 beta-2001", runtime="beta-200")[3:], [
+            ("Decky finders missing in beta 2001", "open")],
             "a closed issue is not reopened, and a version that extends another's number is not a duplicate")
-
 
 
 class UpstreamAdoptTest(WorkflowTest):

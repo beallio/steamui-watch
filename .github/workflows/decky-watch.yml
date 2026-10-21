@@ -19,19 +19,43 @@ jobs:
       - uses: astral-sh/setup-uv@v10.3.0
         with:
           version: "0.13.0"
-      - name: Report missing Decky finders
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: "1.3.14"
+      - name: Check Decky finders in the bundle text
+        run: uv run --locked --no-dev python decky_watch.py "$RUNNER_TEMP/steamui-watch/reports/static"
+      - name: Run Decky finders in headless Chrome
+        # Runs even if the text check failed: the two checks are independent.
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          export TMPDIR="${RUNNER_TEMP}/steamui-watch"
+          export TMPDIR="${RUNNER_TEMP}/steamui-watch/runtime"
           mkdir -m 700 -p "$TMPDIR"
-          uv run --locked --no-dev python decky_watch.py "$TMPDIR/reports"
+          # awk reads to the end: exiting early would kill gh with SIGPIPE under pipefail.
+          ui=$(gh api repos/beallio/decky-loader/contents/frontend/pnpm-lock.yaml -H 'Accept: application/vnd.github.raw' |
+            awk '/^      .@decky\/ui.:$/ && !found { getline; getline; sub(/^ *version: */, ""); sub(/[(].*/, ""); print; found = 1 }')
+          [ -n "$ui" ] || { echo 'no @decky/ui version in the decky-loader lock file' >&2; exit 1; }
+          npm pack "@decky/ui@$ui" --pack-destination "$TMPDIR" --silent
+          mkdir "$TMPDIR/decky-ui"
+          tar -xzf "$TMPDIR/decky-ui-$ui.tgz" -C "$TMPDIR/decky-ui"
+          bun tools/runtime_probe.ts --decky-ui "$TMPDIR/decky-ui/package" --report-dir "$RUNNER_TEMP/steamui-watch/reports/runtime"
+      - name: Open issues for missing Decky finders
+        # always(): report what either check found, even if the other one failed.
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          reports="$RUNNER_TEMP/steamui-watch/reports"
           titles=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --limit 1000 --json title --jq '.[].title')
-          for report in "$TMPDIR"/reports/*.md; do
+          for report in "$reports"/static/*.md "$reports"/runtime/*.md; do
             [ -e "$report" ] || continue
             name=$(basename "$report" .md)
-            title="Decky finders missing in ${name/-/ }"
-            # One issue per client version; a closed issue means "checked".
+            case "$report" in
+              */runtime/*) title="Decky runtime finders failing in ${name/-/ }" ;;
+              *) title="Decky finders missing in ${name/-/ }" ;;
+            esac
+            # One issue per check and client version; a closed issue means "checked".
             if grep -qxF "$title" <<<"$titles"; then continue; fi
             gh issue create --repo "$GITHUB_REPOSITORY" --assignee "$GITHUB_REPOSITORY_OWNER" \
               --title "$title" --body-file "$report"
