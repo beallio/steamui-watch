@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - css_mappings.py
+      - mapping_changes.py
       - packages/decky-extras/**
       - tools/runtime_probe.ts
       - package.json
@@ -129,6 +130,19 @@ jobs:
           new_dumps=$(for v in $retained; do grep -qwF "$v" <<<"$titles" || echo "$v"; done | paste -sd ' ')
           [ -n "$new_dumps" ] || exit 0
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          notice="$RUNNER_TEMP/steamui-watch/notice"
+          uv run --locked --no-dev python mapping_changes.py "$mappings" $new_dumps \
+            --repository-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --run-url "$run_url" --deployment "$DEPLOYMENT" --output-dir "$notice"
+          # Retain readable diffs before opening an issue that links to them.
+          if [ -d "$mappings/class-diffs" ]; then
+            git -C "$mappings" add class-diffs
+            if ! git -C "$mappings" diff --cached --quiet; then
+              git -C "$mappings" -c user.name='github-actions[bot]' \
+                -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+                commit -m 'chore(mappings): retain CSS class diffs'
+              git -C "$mappings" push origin HEAD:mapping-data
+            fi
+          fi
           gh issue create --repo "$GITHUB_REPOSITORY" --assignee "$GITHUB_REPOSITORY_OWNER" \
-            --title "New CSS mappings: $new_dumps" \
-            --body "$(printf 'New Steam Deck client versions: `%s`\n\nPages deployment in this run: **%s**\n\n- [Stable mappings](https://beallio.github.io/steamui-watch/stable.json)\n- [Beta mappings](https://beallio.github.io/steamui-watch/beta.json)\n- [Workflow run](%s)\n\nCheck themes on the new version, then close this issue. Keep the version names in the title: they mark the versions as announced.\n' "$new_dumps" "$DEPLOYMENT" "$run_url")"
+            --title "$(cat "$notice/title.txt")" --body-file "$notice/body.md"

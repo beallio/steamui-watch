@@ -228,16 +228,31 @@ class NewMappingIssueTest(WorkflowTest):
         self.baseline_call = f"api repos/o/r/contents/webpack?ref={BASELINE}"
         self.state["api"][self.baseline_call.split()[1]] = [{"name": "100.stable.json"}, {"name": "101.beta.json"}]
         self.versions = ["100.stable", "101.beta", "200.stable", "201.beta"]
+        self.dumps = {}
+        self.reject_diff_push = False
 
-    def announce(self):
+    def announce(self, deployment="success"):
         def prepare(runner_temp):
             write_baseline(runner_temp)
+            shutil.copy(WORKFLOWS.parent.parent / "mapping_changes.py", runner_temp)
             webpack = runner_temp / "steamui-watch" / "mappings" / "webpack"
             webpack.mkdir(parents=True)
-            (webpack.parent / ".git").mkdir()
             for version in self.versions:
-                (webpack / f"{version}.json").write_text("{}")
-        return self.run_step("publish-mappings.yml", self.STEP, prepare=prepare, DEPLOYMENT="success")[0]
+                (webpack / f"{version}.json").write_text(json.dumps(self.dumps.get(version, {})))
+            repo = webpack.parent
+            git("init", "-q", "-b", "mapping-data", cwd=repo)
+            git("add", ".", cwd=repo)
+            git("-c", "user.name=seed", "-c", "user.email=seed@test", "commit", "-qm", "seed", cwd=repo)
+            remote = runner_temp / "remote.git"
+            git("clone", "-q", "--bare", str(repo), str(remote), cwd=runner_temp)
+            if self.reject_diff_push:
+                hook = remote / "hooks" / "pre-receive"
+                hook.write_text("#!/bin/sh\nexit 1\n")
+                hook.chmod(0o755)
+            git("remote", "add", "origin", str(remote), cwd=repo)
+        result, self.last_runner = self.run_step(
+            "publish-mappings.yml", self.STEP, prepare=prepare, DEPLOYMENT=deployment)
+        return result
 
     def titles(self):
         return [issue["title"] for issue in self.state["issues"]]
@@ -252,7 +267,8 @@ class NewMappingIssueTest(WorkflowTest):
         self.state["fail"] = []
         result = self.announce()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.titles(), ["New CSS mappings: 200.stable 201.beta"])
+        self.assertEqual(len(self.titles()), 1)
+        self.assertEqual(re.findall(r"\d+\.(?:stable|beta)", self.titles()[0]), ["200.stable", "201.beta"])
         self.assertEqual(self.state["issues"][0]["assignee"], "o")
 
     def test_closed_issue_still_counts_and_only_later_versions_are_announced(self):
@@ -262,12 +278,53 @@ class NewMappingIssueTest(WorkflowTest):
         self.assertEqual(len(self.titles()), 1)
         self.versions.append("1200.stable")
         self.announce()
-        self.assertEqual(self.titles()[-1], "New CSS mappings: 1200.stable")
+        self.assertEqual(re.findall(r"\d+\.(?:stable|beta)", self.titles()[-1]), ["1200.stable"])
 
     def test_baseline_lookup_failure_announces_nothing(self):
         self.state["fail"] = [self.baseline_call]
         self.assertNotEqual(self.announce().returncode, 0)
         self.assertEqual(self.titles(), [])
+
+    def test_version_only_notice_does_not_request_theme_checks(self):
+        self.dumps = {v: {"1": {"Button": "same"}} for v in self.versions}
+        result = self.announce()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        issue = self.state["issues"][0]
+        self.assertIn("version only", issue["title"])
+        self.assertNotIn("Check themes", issue["body"])
+
+    def test_changed_class_notice_links_a_diff_already_pushed_to_the_data_branch(self):
+        self.dumps = {v: {"1": {"Button": "old"}} for v in self.versions}
+        self.dumps["200.stable"] = {"1": {"Button": "new"}}
+        result = self.announce()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        issue = self.state["issues"][0]
+        self.assertIn("class changes", issue["title"])
+        self.assertIn("<code>old</code>", issue["body"])
+        self.assertIn("<code>new</code>", issue["body"])
+        diff_path = "class-diffs/100.stable-to-200.stable.diff"
+        self.assertIn(f"https://github.test/o/r/blob/mapping-data/{diff_path}", issue["body"])
+        diff = subprocess.run(
+            ["git", "show", f"mapping-data:{diff_path}"], cwd=self.last_runner / "remote.git",
+            check=True, capture_output=True, text=True).stdout
+        self.assertIn('-    "Button": "old"', diff)
+        self.assertIn('+    "Button": "new"', diff)
+        issue["state"] = "closed"
+        self.assertEqual(self.announce().returncode, 0)
+        self.assertEqual(len(self.state["issues"]), 1)
+
+    def test_failed_diff_push_does_not_open_an_issue_with_a_broken_link(self):
+        self.dumps["100.stable"] = {"1": {"Button": "old"}}
+        self.dumps["200.stable"] = {"1": {"Button": "new"}}
+        self.reject_diff_push = True
+        result = self.announce()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.state["issues"], [])
+
+    def test_failed_deployment_does_not_claim_the_published_lists_are_updated(self):
+        result = self.announce(deployment="failure")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Do not test the published lists", self.state["issues"][0]["body"])
 
 
 class WatchdogTest(WorkflowTest):
