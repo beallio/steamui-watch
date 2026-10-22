@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - css_mappings.py
+      - packages/decky-extras/**
+      - tools/runtime_probe.ts
+      - package.json
+      - bun.lock
       - .github/workflows/publish-mappings.yml
       - pyproject.toml
       - uv.lock
@@ -54,11 +58,45 @@ jobs:
           mkdir "$TMPDIR/site"
           cp "$TMPDIR/mappings/stable.json" "$TMPDIR/mappings/beta.json" "$TMPDIR/site/"
           cp "$TMPDIR/mappings/LICENSE" "$TMPDIR/site/LICENSE.txt"
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: "1.3.14"
+      - name: Validate and stage Decky extras
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          export TMPDIR="$RUNNER_TEMP/steamui-watch"
+          bun install --frozen-lockfile
+          # Use the upstream UI package the fork locks; the extras must not need our loader fork.
+          ui=$(gh api repos/beallio/decky-loader/contents/frontend/pnpm-lock.yaml --jq .content | base64 -d |
+            awk '/^      .@decky\/ui.:$/ && !found { getline; getline; sub(/^ *version: */, ""); sub(/[(].*/, ""); print; found = 1 }')
+          [ -n "$ui" ] || { echo 'no @decky/ui version in the decky-loader lock file' >&2; exit 1; }
+          npm pack "@decky/ui@$ui" --pack-destination "$TMPDIR" --silent
+          mkdir "$TMPDIR/decky-ui"
+          tar -xzf "$TMPDIR/decky-ui-$ui.tgz" -C "$TMPDIR/decky-ui"
+          # A missing or ambiguous extra stops deployment; the previous Pages data stays live.
+          bun tools/runtime_probe.ts --decky-ui "$TMPDIR/decky-ui/package"
+          bun packages/decky-extras/build.ts --outdir "$TMPDIR/extras-package"
+          npm pack "$TMPDIR/extras-package" --pack-destination "$TMPDIR" --silent
+          cp packages/decky-extras/extras.json "$TMPDIR/site/decky-extras.json"
       - uses: actions/upload-pages-artifact@v5
         with:
           path: ${{ runner.temp }}/steamui-watch/site
       - uses: actions/deploy-pages@v5
         id: deployment
+      - name: Publish the Decky extras package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          export TMPDIR="$RUNNER_TEMP/steamui-watch"
+          version=$(bun -p 'require("./packages/decky-extras/package.json").version')
+          tag="decky-extras-v$version"
+          releases=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName)
+          # Release assets keep old plugin lock files working. Finder updates need no new package release.
+          if jq -e --arg tag "$tag" 'any(.[]; .tagName == $tag)' <<<"$releases" >/dev/null; then exit 0; fi
+          gh release create "$tag" "$TMPDIR/beallio-decky-extras-$version.tgz" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Decky extras $version" \
+            --notes "Extra Steam components for plugins on standard Decky Loader. Install the attached package with npm or pnpm. Finder updates download from the steamui-watch Pages site; no custom loader is required."
       - name: Open an issue for new mappings
         # always(): report retained versions even if deployment failed.
         if: always()

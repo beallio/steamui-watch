@@ -2,7 +2,7 @@
 /**
  * Build a self-contained HTML catalog of what @decky/ui finds in a Steam Deck client bundle: each component drawn by
  * Steam's own React and CSS, every IconsModule icon, the class maps and helpers, and Steam components that
- * @decky/ui does not name, each found by a text finder that a library could reuse.
+ * @decky/ui does not name, each found by the shared data-only finder definitions.
  *
  *   bun tools/decky_catalog.ts [--branch stable|publicbeta] [--bundle-dir DIR] [--decky-ui PATH] [--chrome PATH] [--out FILE]
  *   bun tools/decky_catalog.ts --serve [--port N] [--branch …] [--bundle-dir DIR] [--decky-ui PATH]
@@ -16,6 +16,8 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { buildProbe, fetchBundle, GLOBALS, openSteamPage, STUB } from "./runtime_probe";
+import extrasData from "../packages/decky-extras/extras.json";
+import { matchExtras } from "../packages/decky-extras/match";
 
 const repo = resolve(import.meta.dir, "..");
 
@@ -24,9 +26,9 @@ const repo = resolve(import.meta.dir, "..");
  * S (stateful demo) and on (logged callback); see pageSetup. `live` replaces it in the --serve page; `skip` explains a missing static preview.
  */
 interface Entry { group: string; name: string; use: string; make: string; live?: string; width?: number; note?: string; skip?: string }
-/** A Steam component @decky/ui does not name. `finder` is JS source over `s`, the export's function source. */
-interface Candidate { name: string; why: string; finder: string; make?: string; width?: number }
+interface Candidate { id: string; name: string; why: string; find: unknown[][]; make?: string; width?: number }
 interface Rendered { html: string; height: number; error: string | null }
+type CandidateData = { title: string; description: string; find: unknown[][] };
 interface PageResult {
   modules: number;
   entries: Record<string, Rendered & { where: string[] }>;
@@ -99,37 +101,32 @@ export const ENTRIES: Entry[] = [
     make: `h(L.ColorPickerModal,{closeModal:()=>{},title:"Pick a colour",defaultH:200,defaultS:80,defaultL:50})` },
 ];
 
-// Finders test the export's function source (render/type for forwardRef/memo), the text @decky/ui finders read.
-// Quoted strings and CSS-module keys (`x.WarningBox`) keep their names through minification.
-export const CANDIDATES: Candidate[] = [
-  { name: "Radio button", why: "One option of a radio group.", finder: `s.includes('"RadioButton"')` },
-  { name: "Radio group", why: "Single choice from a few options, drawn as a segmented control.", finder: `s.includes('"Shared_Radio_Group"')`,
-    make: `S("Radio group onChange","b",(v,set)=>h(K["Radio group"],{value:v,onChange:set},h(K["Radio button"],{value:"a"},"Left"),h(K["Radio button"],{value:"b"},"Middle"),h(K["Radio button"],{value:"c"},"Right")))` },
-  { name: "TextButton", why: "Low-emphasis text-only button.", finder: `s.includes('"TextButton"')`, make: `h(C,{onClick:on("TextButton onClick")},"Text button")` },
-  { name: "DialogSettingsSection", why: "Labelled settings group.", finder: `s.includes('"DialogSettingsSection"')`, width: 480,
-    make: `h(C,{label:"Settings section"},h(L.ToggleField,{label:"Option",checked:true}))` },
-  { name: "DialogRoundCheckboxField", why: "Round checkbox row.", finder: `s.includes('"DialogRoundCheckboxField"')`, make: `h(C,{label:"Round checkbox",checked:true})` },
-  { name: "ToggleRow", why: "Compact label and toggle row.", finder: `/\\.ToggleRow\\b/.test(s)`, make: `S("ToggleRow onChange",true,(v,set)=>h(C,{label:"Toggle row",value:v,onChange:set}))` },
-  // Callers pass `rValues:` too; only the component destructures it with a default for showBookendLabels.
-  { name: "Discrete-value slider", why: "Slider over a fixed list of values such as 1, 2, 4, 8.", finder: `s.includes("rValues:") && /showBookendLabels:[\\w$]+=/.test(s)`,
-    make: `S("Discrete-value slider onChange",4,(v,set)=>h(C,{label:"Discrete slider",rValues:[1,2,4,8,16],value:v,onChange:set,showValue:true}))` },
-  { name: "PIN input", why: "Fixed-length digit entry.", finder: `/\\.PinDigit\\b/.test(s)`, make: `S("PIN input onChange","12",(v,set)=>h(C,{digits:4,value:v,onChange:set}))` },
-  { name: "Password input", why: "Text input with a show/hide button.", finder: `/\\.TogglePasswordVisibilityBtn\\b/.test(s)`, make: `S("Password input onChange","secret",(v,set)=>h(C,{value:v,onChange:set}))` },
-  { name: "TextArea", why: "Multi-line text input that grows.", finder: `s.includes("nMinHeight") && s.includes("CalculatePadding")`, make: `S("TextArea onChange","Line one\\nLine two",(v,set)=>h(C,{value:v,onChange:set}))` },
-  { name: "DialogHBar", why: "Horizontal divider.", finder: `s.includes('"DialogHBar"')`, make: `h(C,null)` },
-  { name: "Bottom button row", why: "Row of dialog buttons with standard padding.", finder: `/\\.BottomButtons\\b/.test(s)`, width: 480,
-    make: `h(C,null,h(L.DialogButton,null,"Cancel"),h(L.DialogButtonPrimary,null,"Save"))` },
-  { name: "Stacked confirm buttons", why: "Primary and cancel buttons stacked.", finder: `s.includes('"Stacked"') && s.includes("strPrimaryButtonText")`,
-    make: `h(C,{onPrimary:()=>{},onCancel:()=>{},strPrimaryButtonText:"Continue",strCancelButtonText:"Cancel"})` },
-  { name: "Field description", why: "Description text in field style.", finder: `/\\.FieldDescription\\b/.test(s)`, make: `h(C,null,"Field description text")` },
-  { name: "Label and value field", why: "Read-only label and value row, for example Version 1.2.3.", finder: `/\\.LabelFieldValue\\b/.test(s)`, make: `h(C,{label:"Version"},"1.2.3")` },
-  { name: "Field separator", why: "Standalone field separator line.", finder: `/\\.StandaloneFieldSeparator\\b/.test(s)`, make: `h(C,null)` },
-  { name: "Loading throbber", why: "Circular loading indicator in several sizes.", finder: `s.includes("trackColor") && /\\.Loading\\b/.test(s)`, make: `h(C,{size:"medium"})` },
-  { name: "Warning box", why: "Warning or error message box.", finder: `/\\.WarningBox\\b/.test(s)`, make: `h(C,{type:"Warning",body:"Something needs your attention."})` },
-  { name: "Section header", why: "Header with an optional rule.", finder: `/\\.SectionHeader\\b/.test(s) && s.includes("showRule")`, make: `h(C,{showRule:true,label:"Section header"},"Section header")` },
-  { name: "Segmented character input", why: "Code entry with one box per character.", finder: `/\\.SegmentedCharacterInput\\b/.test(s)`, make: `S("Segmented character input onChange","AB",(v,set)=>h(C,{length:5,value:v,onChange:set}))` },
-  { name: "Callout message", why: "Attention callout.", finder: `/\\.CalloutMessage\\b/.test(s)`, make: `h(C,null,"Callout message")` },
-];
+// Demo code remains local; finder definitions and display text come from the shared data manifest.
+const demos: Record<string, Pick<Candidate, "make" | "width">> = {
+  RadioGroup: { make: `S("Radio group onChange","b",(v,set)=>h(K.RadioGroup,{value:v,onChange:set},h(K.RadioButton,{value:"a"},"Left"),h(K.RadioButton,{value:"b"},"Middle"),h(K.RadioButton,{value:"c"},"Right")))` },
+  TextButton: { make: `h(C,{onClick:on("TextButton onClick")},"Text button")` },
+  DialogSettingsSection: { width: 480, make: `h(C,{label:"Settings section"},h(L.ToggleField,{label:"Option",checked:true}))` },
+  DialogRoundCheckboxField: { make: `h(C,{label:"Round checkbox",checked:true})` },
+  ToggleRow: { make: `S("ToggleRow onChange",true,(v,set)=>h(C,{label:"Toggle row",value:v,onChange:set}))` },
+  DiscreteSlider: { make: `S("Discrete-value slider onChange",4,(v,set)=>h(C,{label:"Discrete slider",rValues:[1,2,4,8,16],value:v,onChange:set,showValue:true}))` },
+  PinInput: { make: `S("PIN input onChange","12",(v,set)=>h(C,{digits:4,value:v,onChange:set}))` },
+  PasswordInput: { make: `S("Password input onChange","secret",(v,set)=>h(C,{value:v,onChange:set}))` },
+  TextArea: { make: `S("TextArea onChange","Line one\\nLine two",(v,set)=>h(C,{value:v,onChange:set}))` },
+  DialogHBar: { make: `h(C,null)` },
+  BottomButtons: { width: 480, make: `h(C,null,h(L.DialogButton,null,"Cancel"),h(L.DialogButtonPrimary,null,"Save"))` },
+  StackedConfirmButtons: { make: `h(C,{onPrimary:()=>{},onCancel:()=>{},strPrimaryButtonText:"Continue",strCancelButtonText:"Cancel"})` },
+  FieldDescription: { make: `h(C,null,"Field description text")` },
+  LabelValueField: { make: `h(C,{label:"Version"},"1.2.3")` },
+  FieldSeparator: { make: `h(C,null)` },
+  LoadingThrobber: { make: `h(C,{size:"medium"})` },
+  WarningBox: { make: `h(C,{type:"Warning",body:"Something needs your attention."})` },
+  SectionHeader: { make: `h(C,{showRule:true,label:"Section header"},"Section header")` },
+  SegmentedCharacterInput: { make: `S("Segmented character input onChange","AB",(v,set)=>h(C,{length:5,value:v,onChange:set}))` },
+  CalloutMessage: { make: `h(C,null,"Callout message")` },
+};
+export const CANDIDATES: Candidate[] = Object.entries(extrasData.components as Record<string, CandidateData>).map(([id, data]) => ({
+  id, name: data.title, why: data.description, find: data.find, ...demos[id],
+}));
 
 /** True when SELECTOR names one of USED's classes as a whole class name (`.Panel` does not match `.PanelSection`). */
 export function selectorUsesClass(selector: string, used: Set<string>): boolean {
@@ -143,7 +140,7 @@ interface PageContext {
   src(v: unknown): string;
   where: Map<unknown, string[]>;
   createRoot(el: Element): any;
-  /** Candidate name to its Steam export, when its finder matched exactly once. */
+  /** Canonical component id to its Steam export, when its finder matched exactly once. */
   K: Record<string, unknown>;
   matches: Record<string, string[]>;
   /** Wrap in an error boundary and Steam's Gaming Mode component provider. */
@@ -158,7 +155,7 @@ interface PageContext {
  * S(name, initial, (value, set) => element) for a component that keeps its own state, and on(name) for a callback.
  * S and on report to window.__catalogLog(name, args) when it exists.
  */
-async function pageSetup(globals: string, candidates: Candidate[]): Promise<PageContext> {
+async function pageSetup(globals: string, candidates: Candidate[], matcher: typeof matchExtras, manifest: typeof extrasData): Promise<PageContext> {
   const w = window as any;
   w.__stubInert = true;
   const webpackUrl = "/probe/webpack.js", libUrl = "/probe/index.js";
@@ -201,10 +198,11 @@ async function pageSetup(globals: string, candidates: Candidate[]): Promise<Page
     render() { return this.state.e ? h("pre", { "data-error": "" }, String((this.state.e as Error)?.message ?? this.state.e)) : (this as any).props.children; }
   }
   const K: Record<string, unknown> = {}, matches: Record<string, string[]> = {};
+  const found = matcher(W.modules, manifest);
   for (const c of candidates) {
-    const all = findAll(new Function("s", `return ${c.finder}`) as (s: string) => boolean);
-    if (all.length === 1) K[c.name] = all[0];
-    matches[c.name] = all.map((v) => where.get(v)!.join(" = "));
+    const all = found[c.id] ?? [];
+    if (all.length === 1) K[c.id] = all[0];
+    matches[c.name] = all.map((v) => (where.get(v) ?? []).join(" = "));
   }
   return {
     W, L, R, D, src, where, createRoot, K, matches,
@@ -214,8 +212,8 @@ async function pageSetup(globals: string, candidates: Candidate[]): Promise<Page
 }
 
 /** Runs inside the Steam page: draws every entry, candidate and icon once and returns static HTML and the CSS it uses. */
-async function pageCatalog(setup: typeof pageSetup, globals: string, entries: Entry[], candidates: Candidate[], selectorUses: string): Promise<PageResult> {
-  const { W, L, R, D, src, where, createRoot, K, matches, wrap, run } = await setup(globals, candidates);
+async function pageCatalog(setup: typeof pageSetup, globals: string, entries: Entry[], candidates: Candidate[], selectorUses: string, matcher: typeof matchExtras, manifest: typeof extrasData): Promise<PageResult> {
+  const { W, L, R, D, src, where, createRoot, K, matches, wrap, run } = await setup(globals, candidates, matcher, manifest);
   const uses = eval(`(${selectorUses})`) as (s: string, u: Set<string>) => boolean;
   const draw = async (make: () => unknown, width: number): Promise<Rendered> => {
     const host = document.createElement("div");
@@ -241,7 +239,7 @@ async function pageCatalog(setup: typeof pageSetup, globals: string, entries: En
   for (const c of candidates) {
     const n = matches[c.name].length;
     out.candidates[c.name] = { matches: matches[c.name], html: "", height: 0, error: n === 1 ? null : `${n} matches` };
-    if (c.make && K[c.name]) Object.assign(out.candidates[c.name], await draw(run(c.make, K[c.name]), c.width ?? 360));
+    if (c.make && K[c.id]) Object.assign(out.candidates[c.name], await draw(run(c.make, K[c.id]), c.width ?? 360));
   }
   // Icons: one drawing each; directional icons once per direction.
   const icons = L.IconsModule ?? {};
@@ -307,8 +305,8 @@ const LAYOUT_CSS = `
 .cat-log div{white-space:pre-wrap;word-break:break-word}`;
 
 /** Runs in the --serve page: renders every entry, candidate and icon live, with an event log. */
-async function pageLive(setup: typeof pageSetup, globals: string, entries: Entry[], candidates: Candidate[], meta: { label: string; ui: string }) {
-  const { L, R, createRoot, K, matches, wrap, run } = await setup(globals, candidates);
+async function pageLive(setup: typeof pageSetup, globals: string, entries: Entry[], candidates: Candidate[], meta: { label: string; ui: string }, matcher: typeof matchExtras, manifest: typeof extrasData) {
+  const { L, R, createRoot, K, matches, wrap, run } = await setup(globals, candidates, matcher, manifest);
   const h = R.createElement;
   const el = (tag: string, attrs: Record<string, string>, ...kids: (Node | string)[]) => {
     const e = document.createElement(tag);
@@ -349,9 +347,9 @@ async function pageLive(setup: typeof pageSetup, globals: string, entries: Entry
   }
   const cgrid = el("div", { class: "cat-grid" });
   for (const c of candidates) {
-    const found = K[c.name];
+    const found = K[c.id];
     const body = !c.make ? none("Used inside another entry.") : found ? mount(run(c.make, found)) : none(`Finder matched ${matches[c.name].length} exports on this build.`);
-    cgrid.append(card(c.name, [c.why, `Finder: ${c.finder}`], body));
+    cgrid.append(card(c.name, [c.why, `Finder: ${JSON.stringify(c.find)}`], body));
   }
   app.append(el("h2", {}, "Steam components not in @decky/ui"), cgrid);
   const icons = L.IconsModule ?? {};
@@ -391,7 +389,7 @@ ${e.note ? `<div class="cat-meta">${esc(e.note)}</div>` : ""}<div class="cat-pre
   const candidates = CANDIDATES.map((c) => {
     const x = r.candidates[c.name];
     return `<article class="cat-card" id="${slug(c.name)}"><h4>${esc(c.name)}</h4><div class="cat-meta">${esc(c.why)}</div>
-<div class="cat-meta">Finder (export source <code>s</code>): <code>${esc(c.finder)}</code></div>
+<div class="cat-meta">Finder clauses (OR within each clause): <code>${esc(JSON.stringify(c.find))}</code></div>
 <div class="cat-meta">Matches on this build: ${x.matches.length ? esc(x.matches.join("; ")) : "none"}</div>
 <div class="cat-preview">${c.make ? preview(x, c.width) : `<p class="cat-none">Drawn inside another entry.</p>`}</div></article>`;
   }).join("\n");
@@ -407,7 +405,7 @@ ${e.note ? `<div class="cat-meta">${esc(e.note)}</div>` : ""}<div class="cat-pre
 <nav class="cat-toc"><a href="#lib">Components @decky/ui finds</a><a href="#candidates">Steam components not in @decky/ui</a><a href="#icons">Icons</a><a href="#other">Class maps, objects, helpers</a></nav>
 <h2 id="lib">Components @decky/ui finds</h2>${groups}
 <h2 id="candidates">Steam components not in @decky/ui</h2>
-<div class="cat-callout">Steam exports with no @decky/ui name. Their module:export keys change between Steam builds, so each has a text finder over the export's source, in the style of @decky/ui's own finders. A finder that matches exactly one export can find the component; check it on each new build.</div>
+<div class="cat-callout">Steam exports with no @decky/ui name. Module:export keys change between Steam builds; these data-only clauses identify components from their source. A finder that matches exactly one export can find the component; check it on each new build.</div>
 <div class="cat-grid">${candidates}</div>
 <h2 id="icons">Icons: IconsModule (${r.icons.length} drawings)</h2>
 <p><code>import { IconsModule } from "@decky/ui"</code> then <code>&lt;IconsModule.Settings /&gt;</code>. Icon names are real names. Directional icons are shown once per <code>direction</code>.</p>
@@ -428,7 +426,7 @@ document.getElementById("cat-filter").addEventListener("input", (e) => { const q
 
 /** Serve the bundle with a live catalog page at /: Steam's page plus the stand-in, then pageLive once Steam has booted. */
 function serveLive(root: string, port: number, label: string, ui: string) {
-  const live = `(${pageLive})((${pageSetup}), ${JSON.stringify(GLOBALS)}, ${JSON.stringify(ENTRIES)}, ${JSON.stringify(CANDIDATES)}, ${JSON.stringify({ label, ui })})`;
+  const live = `(${pageLive})((${pageSetup}), ${JSON.stringify(GLOBALS)}, ${JSON.stringify(ENTRIES)}, ${JSON.stringify(CANDIDATES)}, ${JSON.stringify({ label, ui })}, (${matchExtras.toString()}), ${JSON.stringify(extrasData)})`;
   // Steam renders into #root once its chunks have loaded; @decky/ui must import after that.
   const script = `const t0 = Date.now();
 while (!document.getElementById("root")?.childElementCount && Date.now() - t0 < 30000) await new Promise((r) => setTimeout(r, 250));
@@ -480,7 +478,7 @@ if (import.meta.main) {
     const steam = await openSteamPage(bundle.root, work, args.chrome);
     let result: PageResult;
     try {
-      result = await steam.evaluate<PageResult>(`(${pageCatalog})((${pageSetup}), ${JSON.stringify(GLOBALS)}, ${JSON.stringify(ENTRIES)}, ${JSON.stringify(CANDIDATES)}, ${JSON.stringify(selectorUsesClass.toString())})`);
+      result = await steam.evaluate<PageResult>(`(${pageCatalog})((${pageSetup}), ${JSON.stringify(GLOBALS)}, ${JSON.stringify(ENTRIES)}, ${JSON.stringify(CANDIDATES)}, ${JSON.stringify(selectorUsesClass.toString())}, (${matchExtras.toString()}), ${JSON.stringify(extrasData)})`);
     } finally {
       await steam.close();
     }

@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "revision": 1,
+  "components": {
+    "RadioButton": { "title": "Radio button", "description": "One option of a radio group.", "find": [[{ "text": "\"RadioButton\"" }]] },
+    "RadioGroup": { "title": "Radio group", "description": "Single choice from a few options, drawn as a segmented control.", "find": [[{ "text": "\"Shared_Radio_Group\"" }]] },
+    "TextButton": { "title": "TextButton", "description": "Low-emphasis text-only button.", "find": [[{ "text": "\"TextButton\"" }]] },
+    "DialogSettingsSection": { "title": "DialogSettingsSection", "description": "Labelled settings group.", "find": [[{ "text": "\"DialogSettingsSection\"" }]] },
+    "DialogRoundCheckboxField": { "title": "DialogRoundCheckboxField", "description": "Round checkbox row.", "find": [[{ "text": "\"DialogRoundCheckboxField\"" }]] },
+    "ToggleRow": { "title": "ToggleRow", "description": "Compact label and toggle row.", "find": [[{ "member": "ToggleRow" }]] },
+    "DiscreteSlider": { "title": "Discrete-value slider", "description": "Slider over a fixed list of values such as 1, 2, 4, 8.", "find": [[{ "text": "rValues:" }], [{ "binding": "showBookendLabels" }]] },
+    "PinInput": { "title": "PIN input", "description": "Fixed-length digit entry.", "find": [[{ "member": "PinDigit" }]] },
+    "PasswordInput": { "title": "Password input", "description": "Text input with a show/hide button.", "find": [[{ "member": "TogglePasswordVisibilityBtn" }]] },
+    "TextArea": { "title": "TextArea", "description": "Multi-line text input that grows.", "find": [[{ "text": "nMinHeight" }], [{ "text": "CalculatePadding" }]] },
+    "DialogHBar": { "title": "DialogHBar", "description": "Horizontal divider.", "find": [[{ "text": "\"DialogHBar\"" }]] },
+    "BottomButtons": { "title": "Bottom button row", "description": "Row of dialog buttons with standard padding.", "find": [[{ "member": "BottomButtons" }]] },
+    "StackedConfirmButtons": { "title": "Stacked confirm buttons", "description": "Primary and cancel buttons stacked.", "find": [[{ "text": "\"Stacked\"" }], [{ "text": "strPrimaryButtonText" }]] },
+    "FieldDescription": { "title": "Field description", "description": "Description text in field style.", "find": [[{ "member": "FieldDescription" }]] },
+    "LabelValueField": { "title": "Label and value field", "description": "Read-only label and value row, for example Version 1.2.3.", "find": [[{ "member": "LabelFieldValue" }]] },
+    "FieldSeparator": { "title": "Field separator", "description": "Standalone field separator line.", "find": [[{ "member": "StandaloneFieldSeparator" }]] },
+    "LoadingThrobber": { "title": "Loading throbber", "description": "Circular loading indicator in several sizes.", "find": [[{ "text": "trackColor" }], [{ "member": "Loading" }]] },
+    "WarningBox": { "title": "Warning box", "description": "Warning or error message box.", "find": [[{ "member": "WarningBox" }]] },
+    "SectionHeader": { "title": "Section header", "description": "Header with an optional rule.", "find": [[{ "member": "SectionHeader" }], [{ "text": "showRule" }]] },
+    "SegmentedCharacterInput": { "title": "Segmented character input", "description": "Code entry with one box per character.", "find": [[{ "member": "SegmentedCharacterInput" }]] },
+    "CalloutMessage": { "title": "Callout message", "description": "Attention callout.", "find": [[{ "member": "CalloutMessage" }]] }
+  }
+}

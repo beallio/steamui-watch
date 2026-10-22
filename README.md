@@ -7,6 +7,7 @@ Tools to help Steam Deck themes and Decky plugins keep working after Steam updat
 - **Theme updates:** publishes translation lists for CSS Loader. Themes use Steam's internal names to change how the screen looks. Steam updates can change those names; the lists connect older names to newer ones.
 - **Decky warnings:** checks for changes that could break Decky Loader or its plugin library. A warning from a beta version can give maintainers time to fix a problem before it reaches the normal Steam version.
 - **Steam control catalog:** lets plugin authors look at and try Steam's buttons, sliders, menus, icons, and other screen parts on their own computer. It also includes some controls that Decky's plugin library does not offer by name.
+- **Extra controls for plugins:** a separate package gives plugin authors 21 more Steam controls. Plugins carry this package themselves, so users can use standard Decky Loader. It downloads updated search data and keeps a working local copy if the download fails.
 
 The theme lists and Decky checks run automatically. The catalog is a local tool, not a public website or a plugin to install on a Deck.
 
@@ -23,6 +24,8 @@ The lists are public:
 
 You do not need to run this tool to use the lists. Decky warnings are for maintainers; they do not install fixes on your Deck.
 
+Plugin authors can install [Decky extras](packages/decky-extras/README.md) to use the extra controls. Plugin users do not need to install this package separately or switch to our loader fork.
+
 ## What happens automatically
 
 - Every 6 hours, the service checks Valve's current stable and beta versions and publishes both theme lists. It keeps the older names it has collected, so it can still translate older themes.
@@ -32,6 +35,7 @@ You do not need to run this tool to use the lists. Decky warnings are for mainta
 - Once a day, the service checks for changes to the DeckThemes team's translation data. It adopts changes that pass its safety checks. Other changes open a **"DeckThemes mappings changed"** issue for review.
 - Once a day, it checks the current stable and beta versions for parts of Steam that Decky needs. It reads Steam's files and runs Decky's searches in a browser without Steam. Missing parts open a **"Decky finders missing"** or **"Decky runtime finders failing"** issue.
 - It also checks whether its copies of Decky Loader's own searches need review. Changes open a **"Decky finder copies out of date"** issue. The searches of Decky's UI library are read from the library itself each day, so they need no copy.
+- Before publishing extra-control search updates, the service checks that every extra has exactly one match on both Steam stable and beta. A failed check leaves the previous published data in place.
 
 GitHub can run scheduled checks late.
 

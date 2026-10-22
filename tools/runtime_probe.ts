@@ -20,6 +20,11 @@ import { $ } from "bun";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import extrasData from "../packages/decky-extras/extras.json";
+import { matchExtras, parseManifest } from "../packages/decky-extras/match";
+
+const extras = parseManifest(extrasData);
+
 
 const CDN = "https://client-update.steamstatic.com";
 const BOOT_MS = 12_000;
@@ -81,12 +86,11 @@ export function fingerprint(source: string) {
   return { strings: [...strings].sort(), names: [...names].sort() };
 }
 
-const PROBE = (files: string[]) => `(async (files) => {
+const PROBE = (files: string[]) => `(async (files, manifest) => {
   window.__stubInert = true;
-  const out = { boot: {}, files: {}, loader: {}, snapshot: {} };
+  const out = { boot: {}, files: {}, loader: {}, extras: Object.fromEntries(Object.keys(manifest.components).map((name) => [name, "unavailable"])), snapshot: {} };
   let W;
   try { W = await import("/probe/webpack.js"); } catch (e) { out.boot.webpack = "threw: " + e; return out; }
-  out.boot.modules = W.modules.size;
   ${GLOBALS}
   // Finder results are recorded by identity, so it does not matter how a finder searched.
   const fingerprint = ${fingerprint};
@@ -119,6 +123,11 @@ const PROBE = (files: string[]) => `(async (files) => {
     if (!at) return;
     try { out.snapshot[name] = { at, ...describe(v) }; } catch (e) { out.snapshot[name] = { at, error: String(e).slice(0, 200) }; }
   };
+  const matchExtras = ${matchExtras};
+  for (const [name, matches] of Object.entries(matchExtras(W.modules, manifest))) {
+    out.extras[name] = matches.length;
+    if (matches.length === 1) record("extras:" + name, matches[0]);
+  }
   for (const k of ["SP_REACT", "SP_REACTDOM", "SP_JSX"]) out.boot[k] = !!window[k];
   for (const k of ["CommonUIModule", "IconsModule", "ReactRouter"]) { out.boot[k] = W[k] != null; record(k, W[k]); }
   for (const f of files) {
@@ -149,8 +158,9 @@ const PROBE = (files: string[]) => `(async (files) => {
   // @decky/ui finders whose result is private, so a failure leaves no null export.
   // components/Modal.js: showModal is always a function; it calls the private showModalRaw.
   check("@decky/ui Modal.js: showModalRaw", () => W.findModuleExport((e) => typeof e === "function" && e.toString?.().includes("props.bDisableBackgroundDismiss") && !e?.prototype?.Cancel));
+  out.boot.modules = W.modules.size;
   return out;
-})(${JSON.stringify(files)})`;
+})(${JSON.stringify(files)}, ${JSON.stringify(extras)})`;
 
 export async function fetchBundle(branch: string, dir: string) {
   const get = (url: string) => fetch(url, { headers: { "User-Agent": "steamui-watch" } });
@@ -192,8 +202,13 @@ export const jsxs = (...a) => window.SP_JSX.jsxs(...a);`);
 }
 
 type CdpReply = { id: number; result?: Record<string, unknown>; error?: { message: string } };
-type Snapshot = Record<string, { at: string[] } & Record<string, unknown>>;
-type ProbeResult = { boot: Record<string, boolean | number | string>; files: Record<string, string>; loader: Record<string, string>; snapshot: Snapshot };
+type ProbeResult = {
+  boot: Record<string, boolean | number | string>;
+  files: Record<string, string>;
+  loader: Record<string, string>;
+  extras: Record<string, number | string>;
+  snapshot: Snapshot;
+};
 
 /** A CDP connection. `send`'s T is the protocol's result shape for `method`; it is not checked. */
 export interface CdpClient {
@@ -314,8 +329,12 @@ function failures(label: string, out: ProbeResult) {
   const bad = [...Object.entries(out.boot), ...Object.entries(out.files), ...Object.entries(out.loader)]
     .filter(([k, v]) => k !== "modules" && v !== true && v !== "ok")
     .map(([k, v]) => `${k}: ${v === false ? "missing" : v}`);
+  const extraResults = Object.entries(out.extras);
+  bad.push(...extraResults.filter(([, count]) => count !== 1)
+    .map(([name, count]) => `extras:${name}: ${typeof count === "number" ? `${count} matches` : count}`));
   console.log(`${label}: ${out.boot.modules ?? 0} modules; ${bad.length ? bad.length + " failing" : "all finders ok"}`);
-  for (const line of bad) console.log(`  ${line}`);
+  for (const [name, count] of extraResults) console.log(`  extras:${name}: ${typeof count === "number" ? `${count} matches` : count}`);
+  for (const line of bad.filter((line) => !line.startsWith("extras:"))) console.log(`  ${line}`);
   return bad;
 }
 

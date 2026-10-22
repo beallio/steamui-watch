@@ -16,7 +16,8 @@ The project uses [uv](https://docs.astral.sh/uv/) to select Python 3.14 from `.p
 ```sh
 uv run --locked python -m unittest
 uv run --locked ty check
-bun test tools/
+bun install --frozen-lockfile
+bun test tools/ packages/
 ```
 
 The last command needs [Bun](https://bun.sh). `python3 -m unittest` also works without uv. Workflow tests need `git` and `jq`; tests that need missing tools are skipped. GitHub runs the Python tests, type check, and Bun tests on pushes and pull requests.
@@ -105,6 +106,25 @@ Open the printed local address in Chrome or Chromium. The page runs Steam's code
 These tools also accept `--bundle-dir DIR` to use an extracted `steamui` directory and `--decky-ui PATH` to select the library. Finders and minified module/export keys must be checked on each Steam build; a unique match is not a guarantee of future compatibility.
 
 Catalog output contains Valve's styles, icons, and images. `docs/local/` is Git-ignored; do not publish the generated files or commit downloaded bundles.
+
+## Extra components for standard Decky plugins
+
+[`@beallio/decky-extras`](packages/decky-extras/README.md) is bundled inside each plugin; official `@decky/ui` and React remain external and come from the user's loader. Do not add extras to `DFL` or require our fork. The package uses the public `createModuleMapping` API from official `@decky/ui` 4.15.1 or newer.
+
+`packages/decky-extras/extras.json` is the single extras list for the package, catalog and runtime probe. Official components still come from the real `@decky/ui` package. The extras list contains stable component names, titles, descriptions, and AND clauses of OR atoms. Atoms can only match literal text, a whole member name, or a destructuring default binding. No downloaded JavaScript, regular expressions, module IDs, or remote URLs are allowed.
+
+To correct a finder, edit its clauses and increase `revision`. Run the probe on stable and beta. Every extra must match exactly one distinct Steam object. Re-exports of that same object count once. These checks establish identity and presence, not prop meaning or controller behavior.
+
+The publishing workflow runs the probe before deploying `decky-extras.json` alongside the CSS lists. A failure leaves the previous Pages deployment available. Plugin packages download the definitions on first use, keep validated data in `localStorage`, refresh hourly while mounted, and retry after a minute on failure. Downloads that would lose a working finder are rejected before replacing the cache. See the package README for unload cleanup and explicit fallback behavior.
+
+For a runtime implementation change, increase the package version and build it:
+
+```sh
+bun packages/decky-extras/build.ts --outdir "$scratch/decky-extras-package"
+npm pack "$scratch/decky-extras-package" --pack-destination "$scratch"
+```
+
+After Pages deploys, the workflow creates a `decky-extras-v<version>` GitHub release with the installable tarball if the release does not exist. Old releases are never replaced, so existing plugin lock files keep working. Finder-only changes need a manifest revision bump but no package version bump. No npm credentials are needed.
 
 ## Publishing and retained history
 

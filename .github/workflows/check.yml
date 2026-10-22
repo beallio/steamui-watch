@@ -28,4 +28,6 @@ jobs:
       - name: Probe tests
         run: |
           bun install --frozen-lockfile
-          bun test tools/
+          bun test tools/ packages/
+      - name: Build Decky extras
+        run: bun packages/decky-extras/build.ts --outdir "$RUNNER_TEMP/decky-extras-package"
