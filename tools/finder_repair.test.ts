@@ -78,6 +78,24 @@ test("ranks the matching object over a similar decoy after its module moves, ret
   expect(result.ranked).toHaveLength(2);
 });
 
+test("does not favor a reused export key or module over an exact fingerprint after renumbering", () => {
+  const previous = { at: ["1:a"], strings: ["unique target marker"], names: ["children", "className"] };
+  const selected = candidate("", ["2:b"], { strings: [...previous.strings], names: [...previous.names] });
+  for (const at of ["3:a", "1:c", "1:a"]) {
+    const decoy = candidate("", [at], { names: [...previous.names] });
+    expect(rankCandidates(previous, [decoy, selected]).candidate).toBe(selected);
+  }
+});
+
+test("withholds a location match when another object has clearly stronger fingerprint evidence", () => {
+  const previous = {
+    at: ["1:a"], strings: ["shared component label", "unique target marker"], names: ["ResetSelection", "RenderDetails"],
+  };
+  const located = candidate("", ["1:a"], { strings: ["shared component label"], names: [...previous.names] });
+  const moved = candidate("", ["2:b"], { strings: [...previous.strings], names: [...previous.names] });
+  expect(rankCandidates(previous, [located, moved]).candidate).toBeUndefined();
+});
+
 test("keeps the same export when its component name changes from member access to a literal", () => {
   const previous = { at: ["28816:Kc"], names: ["SliderField", "component", "createElement", "fallback"] };
   const selected = candidate('function(e){return a("SliderField",e)}', ["28816:Kc"], {

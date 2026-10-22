@@ -87,7 +87,7 @@ CHROME=/path/to/chrome bun tools/runtime_probe.ts \
   --baseline-dir "$scratch/finder-data/snapshots" --report-dir "$scratch/decky-runtime-reports"
 ```
 
-The repair tool reads the newest strictly older snapshot from the same branch and exact `@decky/ui` version. It ranks distinct Steam objects using module/export locations and fingerprint overlap, including names that changed from member access to string literals. Re-exports of one object count once. A location alone is not enough, and close matches are reported as ambiguous.
+The repair tool reads the newest strictly older snapshot from the same branch and exact `@decky/ui` version. It ranks distinct Steam objects using module/export locations and fingerprint overlap, including names that changed from member access to string literals. Re-exports of one object count once. Only a complete module/export location can receive priority, and it needs meaningful fingerprint evidence; a reused module ID, export key, or common rendering names such as `children` and `className` do not establish identity. If location conflicts with clearly stronger fingerprint evidence, or candidates are close, the result is ambiguous.
 
 It builds a short source-text or stable property/method predicate, keeping old match text as an alternative where needed. It checks the combined predicate for one distinct target in both catalogs, then runs the real `@decky/ui` helper and requires the expected object by identity (`===`) on stable and beta. A single-branch or `--bundle-dir` run cannot produce a verified repair. Missing baselines, weak evidence, shared factory code and failed identity checks produce reasons, not guessed fixes.
 

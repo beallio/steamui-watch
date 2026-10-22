@@ -18,6 +18,7 @@ const FIELDS = ["strings", "names", "methods", "keys"] as const;
 const WEIGHTS = { strings: 45, names: 10, methods: 25, keys: 20 } as const;
 const GENERIC_KEYS: Record<string, true> = {
   toString: true, render: true, type: true, prototype: true, constructor: true, length: true, call: true, apply: true,
+  children: true, className: true, createElement: true, jsx: true, jsxs: true, component: true, fallback: true,
 };
 const STABLE_KEY = /^[A-Za-z_][A-Za-z_$-]{3,}$/;
 const MIN_TEXT = 8;
@@ -28,8 +29,8 @@ const values = (record: Fingerprint, field: (typeof FIELDS)[number]) =>
 
 function strongEvidence(previous: Fingerprint, candidate: Fingerprint): boolean {
   // A component name can move from a member access to a string when Valve changes its override hook.
-  if (values(previous, "names").some((name) => name.length >= MIN_TEXT && values(candidate, "strings").includes(name))
-    || values(previous, "strings").some((text) => text.length >= MIN_TEXT && values(candidate, "names").includes(text))) return true;
+  if (values(previous, "names").some((name) => name.length >= MIN_TEXT && !GENERIC_KEYS[name] && values(candidate, "strings").includes(name))
+    || values(previous, "strings").some((text) => text.length >= MIN_TEXT && !GENERIC_KEYS[text] && values(candidate, "names").includes(text))) return true;
   return FIELDS.some((field) => {
     const right = new Set(values(candidate, field));
     const matches = values(previous, field).filter((value) => right.has(value));
@@ -52,22 +53,9 @@ function fingerprintScore(previous: Fingerprint, candidate: Fingerprint): number
   return weight ? Math.round(weighted / weight * 100) : 0;
 }
 
-function locations(at: string[]): { exact: Set<string>; modules: Set<string>; exports: Set<string> } {
-  const exact = new Set(at), modules = new Set<string>(), exports = new Set<string>();
-  for (const value of at) {
-    const colon = value.indexOf(":");
-    if (colon < 0) modules.add(value);
-    else { modules.add(value.slice(0, colon)); exports.add(value.slice(colon + 1)); }
-  }
-  return { exact, modules, exports };
-}
-
 function locationScore(previous: string[], candidate: string[]): number {
-  const left = locations(previous), right = locations(candidate);
-  if ([...left.exact].some((value) => right.exact.has(value))) return 220;
-  if ([...left.modules].some((value) => right.modules.has(value))) return 120;
-  if ([...left.exports].some((value) => right.exports.has(value))) return 140;
-  return 0;
+  // A module ID or minified export key alone can be reused by unrelated code.
+  return previous.some((at) => candidate.includes(at)) ? 220 : 0;
 }
 
 export function rankCandidates(previous: Fingerprint, candidates: Candidate[]): {
@@ -75,12 +63,15 @@ export function rankCandidates(previous: Fingerprint, candidates: Candidate[]): 
   reason: string;
   ranked: { at: string[]; score: number }[];
 } {
-  const ranked = candidates.map((candidate) => ({
-    candidate,
-    fingerprint: fingerprintScore(previous, candidate),
-    location: locationScore(previous.at, candidate.at),
-    evidence: strongEvidence(previous, candidate),
-  })).map(({ candidate, fingerprint, location, evidence }) => ({
+  const ranked = candidates.map((candidate) => {
+    const evidence = strongEvidence(previous, candidate);
+    return {
+      candidate,
+      fingerprint: fingerprintScore(previous, candidate),
+      location: evidence ? locationScore(previous.at, candidate.at) : 0,
+      evidence,
+    };
+  }).map(({ candidate, fingerprint, location, evidence }) => ({
     candidate, score: fingerprint + location, fingerprint, location, evidence,
   }))
     .sort((a, b) => b.score - a.score || a.candidate.at.join("\0").localeCompare(b.candidate.at.join("\0")))
@@ -96,6 +87,8 @@ export function rankCandidates(previous: Fingerprint, candidates: Candidate[]): 
   const next = usable[1];
   if (next && best.score - next.score < 5)
     return { reason: "The strongest replacement candidates are ambiguous.", ranked: publicRanked };
+  if (best.location && usable.some((other) => other.fingerprint >= best.fingerprint + 5))
+    return { reason: "Replacement is ambiguous: location and stronger fingerprint evidence point to different objects.", ranked: publicRanked };
   return { candidate: best.candidate, reason: "One replacement candidate has a clear fingerprint match.", ranked: publicRanked };
 }
 
