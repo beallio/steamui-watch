@@ -197,7 +197,8 @@ def report(branch, version, misses):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("outdir", type=Path, help="directory for the <branch>-<version>.md reports")
+    parser.add_argument("outdir", type=Path,
+                        help="directory for the <branch>-<version>.md reports; a passing version gets an empty .ok file")
     parser.add_argument("--branch", choices=BRANCHES, action="append", help="Valve branch (default: both)")
     args = parser.parse_args(argv)
     args.outdir.mkdir(parents=True, exist_ok=True)
@@ -208,9 +209,12 @@ def main(argv=None):
         print(f"{branch} {version}: {len(misses)} of {len(FINDERS)} finders missing")
         for finder, reason in misses:
             print(f"  {finder.owner} {finder.name}: {reason}")
+        name = f"{BRANCHES[branch]}-{version}"
         if misses:
-            (args.outdir / f"{BRANCHES[branch]}-{version}.md").write_text(
-                report(BRANCHES[branch], version, misses), encoding="utf-8")
+            (args.outdir / f"{name}.md").write_text(report(BRANCHES[branch], version, misses), encoding="utf-8")
+        else:
+            # The issue step closes older reports for this branch when it sees a pass.
+            (args.outdir / f"{name}.ok").write_text("")
     return 0
 
 

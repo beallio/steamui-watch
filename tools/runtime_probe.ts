@@ -9,7 +9,8 @@
  * Steam's page boots against a stand-in `SteamClient` that answers every call, then the stand-in
  * goes inert and each @decky/ui file is imported on its own, so one failing file cannot hide the
  * rest. Exit status 1 when any finder fails, unless --report-dir is given: then each branch
- * with failures gets REPORT_DIR/<stable|beta>-<version>.md and the exit status only reports errors.
+ * with failures gets REPORT_DIR/<stable|beta>-<version>.md, each passing branch an empty .ok file,
+ * and the exit status only reports errors.
  * With --snapshot-dir, each branch whose finders all pass also gets SNAPSHOT_DIR/<stable|beta>-<version>.decky-ui-<version>.json:
  * for every finder result that is a Steam object, where Steam exports it and its fingerprint.
  * See docs/background.md, "Headless runtime trial" and "Finder snapshots". The loader's React-tree
@@ -347,7 +348,7 @@ if (import.meta.main) {
       const files = await buildProbe(root, work);
       const out = await probe(root, files, work);
       const bad = failures(label, out);
-      if (bad.length && args["report-dir"]) await writeReport(report, label, ui, bad);
+      if (args["report-dir"]) await (bad.length ? writeReport(report, label, ui, bad) : Bun.write(join(args["report-dir"], `${report}.ok`), ""));
       // Only a clean run is a baseline: the workflow keeps the first file per version forever, so a
       // partial snapshot would hide the good one a later run makes. A broken build falls back to an older snapshot.
       if (args["snapshot-dir"] && bad.length === 0) {

@@ -37,15 +37,32 @@ jobs:
         run: |
           export TMPDIR="${RUNNER_TEMP}/steamui-watch/runtime"
           mkdir -m 700 -p "$TMPDIR"
+          reports="$RUNNER_TEMP/steamui-watch/reports"
           # awk reads to the end: exiting early would kill gh with SIGPIPE under pipefail.
           ui=$(gh api repos/beallio/decky-loader/contents/frontend/pnpm-lock.yaml -H 'Accept: application/vnd.github.raw' |
             awk '/^      .@decky\/ui.:$/ && !found { getline; getline; sub(/^ *version: */, ""); sub(/[(].*/, ""); print; found = 1 }')
           [ -n "$ui" ] || { echo 'no @decky/ui version in the decky-loader lock file' >&2; exit 1; }
-          npm pack "@decky/ui@$ui" --pack-destination "$TMPDIR" --silent
-          mkdir "$TMPDIR/decky-ui"
-          tar -xzf "$TMPDIR/decky-ui-$ui.tgz" -C "$TMPDIR/decky-ui"
-          bun tools/runtime_probe.ts --decky-ui "$TMPDIR/decky-ui/package" --report-dir "$RUNNER_TEMP/steamui-watch/reports/runtime" \
-            --snapshot-dir "$RUNNER_TEMP/steamui-watch/snapshots"
+          probe() { # <@decky/ui version> <report dir> [probe options]
+            npm pack "@decky/ui@$1" --pack-destination "$TMPDIR" --silent
+            mkdir "$TMPDIR/decky-ui-$1"
+            tar -xzf "$TMPDIR/decky-ui-$1.tgz" -C "$TMPDIR/decky-ui-$1"
+            bun tools/runtime_probe.ts --decky-ui "$TMPDIR/decky-ui-$1/package" --report-dir "$2" "${@:3}"
+          }
+          probe "$ui" "$reports/runtime" --snapshot-dir "$RUNNER_TEMP/steamui-watch/snapshots"
+          # Pre-upgrade check: the npm latest the fork has not locked yet. Its passes close older upgrade reports.
+          latest=$(npm view @decky/ui version)
+          upgrade="$reports/upgrade/$latest"
+          mkdir -p "$upgrade"
+          if [ "$latest" = "$ui" ]; then
+            cp "$reports"/runtime/*.ok "$upgrade/" 2>/dev/null || true
+            exit 0
+          fi
+          probe "$latest" "$upgrade"
+          for f in "$upgrade"/*.md; do
+            [ -e "$f" ] || continue
+            body=$(cat "$f")
+            printf '`@decky/ui` %s is the npm `latest`; the fork locks %s. Fix this before the fork upgrades.\n\n%s\n' "$latest" "$ui" "$body" > "$f"
+          done
       - name: Save finder snapshots
         # Where each finder's Steam object is and its fingerprint, per client and @decky/ui version:
         # the baseline for finding a broken finder's object again in a later build.
@@ -102,7 +119,11 @@ jobs:
               else .patch | split("\n")[] | select(test("^[+-]") and test($re)) | "\($f): \(.)" end' <<<"$compare")
           # The compare API lists at most 300 files.
           truncated=$(jq '.files | length >= 300' <<<"$compare")
-          if [ "$ui_locked" = "$ui_copied" ] && [ -z "$changes" ] && [ "$truncated" = false ]; then exit 0; fi
+          if [ "$ui_locked" = "$ui_copied" ] && [ -z "$changes" ] && [ "$truncated" = false ]; then
+            # Marks the copies as current, which closes open copy reports.
+            touch "$reports/ok"
+            exit 0
+          fi
           # The same differences give the same ID, so an issue opens once per new difference.
           id=$(printf '%s\n%s\n%s\n' "$ui_locked" "$changes" "$truncated" | sha256sum | cut -c1-8)
           {
@@ -115,7 +136,7 @@ jobs:
             printf '\n[Compare](https://github.com/%s/compare/%s...main)\n\n' "$fork" "$loader_copied"
             printf 'Update `FINDERS`, `UI` and `LOADER` in `decky_watch.py` and the predicates in `tools/runtime_probe.ts` where needed. Then set `LOADER` to the reviewed fork commit and close this issue.\n'
           } > "$reports/$id.md"
-      - name: Open issues for missing Decky finders
+      - name: Open and close issues for Decky finders
         # always(): report what either check found, even if the other one failed.
         if: always()
         env:
@@ -123,11 +144,12 @@ jobs:
         run: |
           reports="$RUNNER_TEMP/steamui-watch/reports"
           titles=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --limit 1000 --json title --jq '.[].title')
-          for report in "$reports"/static/*.md "$reports"/runtime/*.md "$reports"/copies/*.md; do
+          for report in "$reports"/static/*.md "$reports"/runtime/*.md "$reports"/upgrade/*/*.md "$reports"/copies/*.md; do
             [ -e "$report" ] || continue
             name=$(basename "$report" .md)
             case "$report" in
               */runtime/*) title="Decky runtime finders failing in ${name/-/ }" ;;
+              */upgrade/*) ui=$(basename "$(dirname "$report")"); title="Decky finders failing with @decky/ui $ui in ${name/-/ }" ;;
               */copies/*) title="Decky finder copies out of date ($name)" ;;
               *) title="Decky finders missing in ${name/-/ }" ;;
             esac
@@ -136,3 +158,31 @@ jobs:
             gh issue create --repo "$GITHUB_REPOSITORY" --assignee "$GITHUB_REPOSITORY_OWNER" \
               --title "$title" --body-file "$report"
           done
+          # Close an open report when the same check passed in this run on the same branch, at the
+          # same or a newer client version. A check that did not run leaves no .ok file and closes nothing.
+          run="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json number,title --jq '.[] | "\(.number)\t\(.title)"')
+          while IFS=$'\t' read -r number title; do
+            case "$title" in
+              "Decky finders missing in "*) check=static ;;
+              "Decky runtime finders failing in "*) check=runtime ;;
+              # Any @decky/ui version: a pass with a newer latest makes an older latest's report moot.
+              "Decky finders failing with @decky/ui "*) check='upgrade/*' ;;
+              "Decky finder copies out of date ("*)
+                if [ -e "$reports/copies/ok" ]; then
+                  gh issue close "$number" --repo "$GITHUB_REPOSITORY" --comment "The finder copies match the fork again ([run]($run))." </dev/null
+                fi
+                continue ;;
+              *) continue ;;
+            esac
+            read -r branch version <<<"${title##* in }"
+            # $check is unquoted so that upgrade/* expands.
+            for ok in "$reports"/$check/"$branch"-*.ok; do
+              [ -e "$ok" ] || continue
+              passed=$(basename "$ok" .ok)
+              if [ "${passed#*-}" -ge "$version" ]; then
+                gh issue close "$number" --repo "$GITHUB_REPOSITORY" --comment "The same check passes on $branch ${passed#*-} ([run]($run))." </dev/null
+                break
+              fi
+            done
+          done <<<"$open"

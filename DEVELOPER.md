@@ -60,7 +60,7 @@ python3 decky_watch.py "$scratch/decky-reports"
 python3 decky_watch.py "$scratch/decky-beta-reports" --branch publicbeta
 ```
 
-This needs no data checkout. It prints missing-finder counts and writes one report per failing branch as `<stable|beta>-<version>.md`. A text hit only proves that the text is somewhere in the bundle, not that the real finder selects the right object. Property and method checks see names only.
+This needs no data checkout. It prints missing-finder counts and writes one report per failing branch as `<stable|beta>-<version>.md`, and an empty `<stable|beta>-<version>.ok` for each passing branch. A text hit only proves that the text is somewhere in the bundle, not that the real finder selects the right object. Property and method checks see names only.
 
 ### Browser check
 
@@ -71,7 +71,7 @@ CHROME=/path/to/chrome bun tools/runtime_probe.ts
 CHROME=/path/to/chrome bun tools/runtime_probe.ts --branch publicbeta --decky-ui /path/to/@decky/ui
 ```
 
-The default checks stable and beta. It prints results for each version and lists failed finders. It exits with status 1 if any finder fails. With `--report-dir DIR`, it writes reports for failing versions and reserves nonzero exit status for execution errors, as the workflow does.
+The default checks stable and beta. It prints results for each version and lists failed finders. It exits with status 1 if any finder fails. With `--report-dir DIR`, it writes reports for failing versions and an empty `.ok` file for each passing version, and reserves nonzero exit status for execution errors, as the workflow does.
 
 With `--snapshot-dir DIR`, it also writes `<stable|beta>-<version>.decky-ui-<version>.json` for each version whose finders all pass. A version with a failing finder gets no snapshot, because the workflow keeps the first snapshot forever; a later clean run writes it. For each finder result that is a Steam object, the file records where Steam exports it (`module:export`, or only the module for whole modules) and a fingerprint. The fingerprint holds string literals and property names for functions, plus prototype methods for classes. For objects, it holds the key names. Results are matched by identity, so the file includes finders that scan `CommonUIModule` directly. Helpers and wrappers that `@decky/ui` makes itself are left out, and so are loader checks that return only true or false.
 
@@ -127,7 +127,7 @@ To skip the change, close the issue without advancing the baseline. A closed iss
 
 ## Keeping the Decky checks current
 
-[Watch Decky finders](.github/workflows/decky-watch.yml) runs the text and browser checks daily. The browser check installs the `@decky/ui` version locked by `beallio/decky-loader`, not an independently selected latest version.
+[Watch Decky finders](.github/workflows/decky-watch.yml) runs the text and browser checks daily. The browser check installs the `@decky/ui` version locked by `beallio/decky-loader`. When npm's `latest` `@decky/ui` is newer, the browser check runs again with it as a pre-upgrade check and opens **"Decky finders failing with @decky/ui <version> in <branch> <client>"** issues. Fix those before the fork upgrades.
 
 The workflow also compares the copied finder versions with the fork's lock file and changed frontend lines that search Steam's code or use its globals. This comparison is a heuristic: some reported changes need no check update, and it can miss relevant changes.
 
@@ -142,6 +142,12 @@ When a **"Decky finder copies out of date"** issue opens:
 5. Publish the reviewed changes, then close the issue.
 
 For **"Decky finders missing"** and **"Decky runtime finders failing"**, confirm the problem on the reported Steam version, fix the Decky finder or the incorrect local check, then close the issue. The workflow does not reopen a closed report with the same check and version.
+
+The workflow closes reports by itself, with a comment that links the run:
+
+- A finder report closes when the same check passes on the same branch at the same or a newer client version. A check that did not run, or that failed with an error, closes nothing.
+- A pre-upgrade report closes when the pre-upgrade check passes on that branch with any `@decky/ui` version. A newer npm `latest` makes the older report moot. When the fork locks the npm `latest`, the locked browser check counts as the pre-upgrade check.
+- A copies report closes when the copies match the fork again, after you update `UI` and `LOADER`.
 
 ## Troubleshooting
 

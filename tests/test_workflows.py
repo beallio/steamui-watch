@@ -339,32 +339,44 @@ class UpstreamWatchTest(WorkflowTest):
 
 
 class DeckyWatchTest(WorkflowTest):
+    STEP = "Open and close issues for Decky finders"
+
     @staticmethod
-    def reports(**by_check):
-        """Write <check>/<name>.md reports where the checks leave them."""
+    def reports(failed, passed):
+        """Write <check>/<name>.md reports and <check>/<name>.ok passes where the checks leave them."""
         def prepare(runner_temp):
-            for check, names in by_check.items():
-                folder = runner_temp / "steamui-watch" / "reports" / check
-                folder.mkdir(parents=True)
-                for name in names.split():
-                    (folder / f"{name}.md").write_text(f"{check} {name}\n")
+            for marks, suffix in ((failed, "md"), (passed, "ok")):
+                for check, names in marks.items():
+                    folder = runner_temp / "steamui-watch" / "reports" / check
+                    folder.mkdir(parents=True, exist_ok=True)
+                    for name in names.split():
+                        (folder / f"{name}.{suffix}").write_text(f"{check} {name}\n" if suffix == "md" else "")
         return prepare
 
-    def watch(self, **by_check):
-        result, _ = self.run_step("decky-watch.yml", "Open issues for missing Decky finders", prepare=self.reports(**by_check))
+    def watch(self, failed=None, passed=None):
+        result, _ = self.run_step("decky-watch.yml", self.STEP, prepare=self.reports(failed or {}, passed or {}))
         self.assertEqual(result.returncode, 0, result.stderr)
         return [(issue["title"], issue["state"]) for issue in self.state["issues"]]
 
     def test_one_issue_per_check_and_client_version(self):
         self.assertEqual(self.watch(), [])
-        self.assertEqual(self.watch(static="beta-200 stable-100", runtime="beta-200"), [
+        self.assertEqual(self.watch({"static": "beta-200 stable-100", "runtime": "beta-200", "upgrade/4.16.0": "beta-200"}), [
             ("Decky finders missing in beta 200", "open"), ("Decky finders missing in stable 100", "open"),
-            ("Decky runtime finders failing in beta 200", "open")])
+            ("Decky runtime finders failing in beta 200", "open"),
+            ("Decky finders failing with @decky/ui 4.16.0 in beta 200", "open")])
         self.assertEqual(self.state["issues"][2]["body"], "runtime beta-200\n")
         self.state["issues"][0]["state"] = "closed"
-        self.assertEqual(self.watch(static="beta-200 stable-100 beta-2001", runtime="beta-200")[3:], [
+        self.assertEqual(self.watch({"static": "beta-200 stable-100 beta-2001", "runtime": "beta-200"})[4:], [
             ("Decky finders missing in beta 2001", "open")],
             "a closed issue is not reopened, and a version that extends another's number is not a duplicate")
+
+    def test_a_pass_closes_reports_of_the_same_check_and_branch_up_to_its_version(self):
+        self.watch({"static": "beta-200 stable-100", "runtime": "beta-200 stable-100", "upgrade/4.16.0": "beta-200"})
+        self.assertEqual(self.watch(passed={"runtime": "beta-201 stable-99", "upgrade/4.17.0": "beta-200"}), [
+            ("Decky finders missing in beta 200", "open"), ("Decky finders missing in stable 100", "open"),
+            ("Decky runtime finders failing in beta 200", "closed"), ("Decky runtime finders failing in stable 100", "open"),
+            ("Decky finders failing with @decky/ui 4.16.0 in beta 200", "closed")],
+            "only the passing check closes; an older version's pass does not; a newer latest closes an older one's report")
 
 
 class DeckyCopiesTest(WorkflowTest):
@@ -389,7 +401,7 @@ class DeckyCopiesTest(WorkflowTest):
         result, runner = self.run_step("decky-watch.yml", "Compare the finder copies with the decky-loader fork", cwd=self.workspace)
         self.assertEqual(result.returncode, 0, result.stderr)
         copy = lambda temp: shutil.copytree(runner / "steamui-watch", temp / "steamui-watch")
-        result, _ = self.run_step("decky-watch.yml", "Open issues for missing Decky finders", prepare=copy)
+        result, _ = self.run_step("decky-watch.yml", DeckyWatchTest.STEP, prepare=copy)
         self.assertEqual(result.returncode, 0, result.stderr)
         return [issue["title"] for issue in self.state["issues"]]
 
@@ -415,6 +427,9 @@ class DeckyCopiesTest(WorkflowTest):
         titles = self.watch()
         self.assertEqual(len(titles), 2, "a new @decky/ui version is a new difference")
         self.assertIn("`@decky/ui` locked in the fork: `4.16.0`", self.state["issues"][1]["body"])
+        self.fork(ui="4.15.1", files=[])
+        self.watch()
+        self.assertEqual(self.state["issues"][1]["state"], "closed", "copies that match the fork again close the open report")
 
     def test_missing_lock_version_fails(self):
         self.state["api"][f"{self.FORK}/contents/frontend/pnpm-lock.yaml"] = {"content": base64.b64encode(b"importers: {}\n").decode()}
