@@ -144,5 +144,8 @@ jobs:
               git -C "$mappings" push origin HEAD:mapping-data
             fi
           fi
+          label=$(cat "$notice/label.txt")
+          labels=()
+          if [ -n "$label" ]; then labels=(--label "$label"); fi
           gh issue create --repo "$GITHUB_REPOSITORY" --assignee "$GITHUB_REPOSITORY_OWNER" \
-            --title "$(cat "$notice/title.txt")" --body-file "$notice/body.md"
+            --title "$(cat "$notice/title.txt")" --body-file "$notice/body.md" "${labels[@]}"

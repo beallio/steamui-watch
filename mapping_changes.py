@@ -74,7 +74,12 @@ def build_notice(repo, versions, repository_url, run_url, deployment):
                 highlights.append(f"- {len(values) - len(shown)} more {label.lower()} values are in the full diff.")
         highlights.append("")
 
-    kind = "class changes" if changed else "comparison unavailable" if unknown else "version only"
+    if changed:
+        kind, label = "class changes", "Changes"
+    elif unknown:
+        kind, label = "comparison unavailable", ""
+    else:
+        kind, label = "version only", "No change"
     title = f"New CSS mappings ({kind}): {' '.join(versions)}"
     body = [f"New Steam Deck client versions: `{' '.join(versions)}`", "",
             f"Pages deployment in this run: **{deployment}**", "",
@@ -92,7 +97,7 @@ def build_notice(repo, versions, repository_url, run_url, deployment):
     else:
         body.append("Version-only update: the extracted CSS class data is unchanged. This notice is informational and can be closed.")
     body.append("Keep the version names in the title: they mark the versions as announced.")
-    return title, "\n".join(body) + "\n"
+    return title, "\n".join(body) + "\n", label
 
 
 def main(argv=None):
@@ -104,10 +109,11 @@ def main(argv=None):
     parser.add_argument("--deployment", required=True)
     parser.add_argument("--output-dir", required=True, type=Path)
     args = parser.parse_args(argv)
-    title, body = build_notice(args.mappings_repo, args.versions, args.repository_url, args.run_url, args.deployment)
+    title, body, label = build_notice(args.mappings_repo, args.versions, args.repository_url, args.run_url, args.deployment)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     (args.output_dir / "title.txt").write_text(title + "\n", encoding="utf-8")
     (args.output_dir / "body.md").write_text(body, encoding="utf-8")
+    (args.output_dir / "label.txt").write_text(label + "\n", encoding="utf-8")
     print(title)
     return 0
 

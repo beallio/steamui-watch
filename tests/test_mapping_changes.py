@@ -22,8 +22,9 @@ class MappingChangesTest(unittest.TestCase):
     def test_identical_classes_and_renumbered_modules_are_version_only(self):
         self.dump("100.stable", {"1": {"Button": "button", "Label": "label"}})
         self.dump("200.stable", {"9": {"Label": "label", "Button": "button"}})
-        title, body = self.notice("200.stable")
+        title, body, label = self.notice("200.stable")
         self.assertIn("version only", title)
+        self.assertEqual(label, "No change")
         self.assertIn("200.stable", title)
         self.assertIn("No class data changes", body)
         self.assertNotIn("Check themes", body)
@@ -38,7 +39,7 @@ class MappingChangesTest(unittest.TestCase):
                                 "5": {"moderation_contentreports_title": "Content reports"},
                                 "6": {"0": "Unrelated constant"}})
         self.dump("200.stable", classes)
-        title, body = self.notice("200.stable")
+        title, body, _ = self.notice("200.stable")
         self.assertIn("version only", title)
         self.assertNotIn("removed", body)
 
@@ -48,7 +49,7 @@ class MappingChangesTest(unittest.TestCase):
         self.dump("19.beta", {"1": {"Button": "wrong_branch"}})
         self.dump("20.stable", {"2": {"Button": "new", "Label": "unchanged", "Other": "added"}})
         self.dump("30.stable", {"1": {"Button": "future"}})
-        title, body = self.notice("20.stable")
+        title, body, _ = self.notice("20.stable")
         self.assertIn("class changes", title)
         self.assertIn("10.stable", body)
         self.assertIn("<code>old</code>", body)
@@ -64,15 +65,17 @@ class MappingChangesTest(unittest.TestCase):
     def test_binding_changes_are_not_mistaken_for_version_only(self):
         self.dump("100.beta", {"1": {"Button": "a", "Label": "b"}})
         self.dump("200.beta", {"1": {"Button": "b", "Label": "a"}})
-        title, body = self.notice("200.beta")
+        title, body, label = self.notice("200.beta")
         self.assertIn("class changes", title)
+        self.assertEqual(label, "Changes")
         self.assertIn("bindings changed", body)
         self.assertTrue((self.repo / "class-diffs" / "100.beta-to-200.beta.diff").is_file())
 
     def test_missing_baseline_and_failed_deployment_do_not_claim_no_change_or_publication(self):
         self.dump("100.beta", {"1": {"Button": "a"}})
-        title, body = self.notice("100.beta", deployment="failure")
+        title, body, label = self.notice("100.beta", deployment="failure")
         self.assertIn("comparison unavailable", title)
+        self.assertEqual(label, "")
         self.assertIn("No earlier beta dump", body)
         self.assertIn("**failure**", body)
         self.assertIn("Do not test the published lists", body)
@@ -81,7 +84,7 @@ class MappingChangesTest(unittest.TestCase):
     def test_inline_highlights_are_bounded_but_diff_is_complete(self):
         self.dump("100.stable", {"1": {"Old": "old"}})
         self.dump("200.stable", {"1": {f"Prop{i}": f"new_{i:03d}" for i in range(100)}})
-        _, body = self.notice("200.stable")
+        _, body, _ = self.notice("200.stable")
         self.assertIn("100 added", body)
         self.assertIn("1 removed", body)
         self.assertIn("full diff", body)

@@ -134,7 +134,7 @@ After Pages deploys, the workflow creates a `decky-extras-v<version>` GitHub rel
 
 Do not recreate `mapping-data` from upstream or merge it into `main`. Its history preserves classes introduced by intermediate releases and reviewed mapping corrections. Keep the output format and stable/beta selection unchanged for CSS Loader consumers.
 
-A **"New CSS mappings"** issue can open even if generation or deployment failed. Check the deployment result in the issue and the linked run before testing the published lists. Titles distinguish **"version only"**, **"class changes"**, and **"comparison unavailable"**. Keep version numbers in issue titles: the workflow checks open and closed issues to avoid announcing the same version again.
+A **"New CSS mappings"** issue can open even if generation or deployment failed. Check the deployment result in the issue and the linked run before testing the published lists. Titles distinguish **"version only"**, **"class changes"**, and **"comparison unavailable"**. The workflow applies `No change` only when all comparisons show unchanged data, or `Changes` when any comparison finds changes. An unavailable comparison without known changes gets neither label. Keep version numbers in issue titles: the workflow checks open and closed issues to avoid announcing the same version again.
 
 `mapping_changes.py` compares each new dump with the latest earlier dump of the same branch, using numeric version order. It ignores module IDs, property order, known translation tables, and singleton `0`/`version` constants. It retains duplicate module contents and detects changed property bindings even when the set of CSS values is unchanged. Counts cover distinct exported CSS values, including CSS constants, not confirmed old-to-new class pairs.
 
@@ -150,7 +150,7 @@ uv run --locked python mapping_changes.py "$scratch/steamui-watch-mapping-data" 
   --deployment success --output-dir "$scratch/css-notice"
 ```
 
-Use the versions and deployment result you want to report. The command writes `title.txt` and `body.md` to the output directory and any class diffs to the data checkout. The diff links become available only after those files are pushed to `mapping-data`.
+Use the versions and deployment result you want to report. The command writes `title.txt`, `body.md`, and `label.txt` to the output directory and any class diffs to the data checkout. `label.txt` is empty when a comparison is unavailable without known changes. The diff links become available only after those files are pushed to `mapping-data`.
 
 [Mapping watchdog](.github/workflows/watchdog.yml) checks every 6 hours for a successful Pages deployment within the past 24 hours. It closes the overdue issue on the next check after recovery. Its keepalive job adds an empty commit to `main` after 45 days without commits, to avoid GitHub's 60-day inactivity cutoff. This is not an external monitor: it cannot alert while Actions is disabled for the repository.
 

@@ -46,7 +46,8 @@ elif args[:2] == ["issue", "list"]:
 elif args[:2] == ["issue", "create"]:
     body = opt("--body") if "--body" in args else open(opt("--body-file")).read()
     issues.append({"number": len(issues) + 1, "title": opt("--title"), "body": body,
-                   "state": "open", "assignee": opt("--assignee")})
+                   "state": "open", "assignee": opt("--assignee"),
+                   "labels": [opt("--label")] if opt("--label") else []})
 elif args[:2] == ["issue", "close"]:
     next(i for i in issues if i["number"] == int(args[2]))["state"] = "closed"
 elif args[:2] == ["run", "list"]:
@@ -292,6 +293,7 @@ class NewMappingIssueTest(WorkflowTest):
         issue = self.state["issues"][0]
         self.assertIn("version only", issue["title"])
         self.assertNotIn("Check themes", issue["body"])
+        self.assertEqual(issue["labels"], ["No change"])
 
     def test_changed_class_notice_links_a_diff_already_pushed_to_the_data_branch(self):
         self.dumps = {v: {"1": {"Button": "old"}} for v in self.versions}
@@ -300,6 +302,7 @@ class NewMappingIssueTest(WorkflowTest):
         self.assertEqual(result.returncode, 0, result.stderr)
         issue = self.state["issues"][0]
         self.assertIn("class changes", issue["title"])
+        self.assertEqual(issue["labels"], ["Changes"])
         self.assertIn("<code>old</code>", issue["body"])
         self.assertIn("<code>new</code>", issue["body"])
         diff_path = "class-diffs/100.stable-to-200.stable.diff"
@@ -325,6 +328,20 @@ class NewMappingIssueTest(WorkflowTest):
         result = self.announce(deployment="failure")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Do not test the published lists", self.state["issues"][0]["body"])
+
+    def test_unknown_comparison_is_not_labeled_as_no_change(self):
+        self.versions.remove("101.beta")
+        result = self.announce()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.state["issues"][0]["labels"], [])
+
+    def test_known_changes_are_labeled_even_if_another_branch_has_no_baseline(self):
+        self.versions.remove("101.beta")
+        self.dumps["100.stable"] = {"1": {"Button": "old"}}
+        self.dumps["200.stable"] = {"1": {"Button": "new"}}
+        result = self.announce()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.state["issues"][0]["labels"], ["Changes"])
 
 
 class WatchdogTest(WorkflowTest):
