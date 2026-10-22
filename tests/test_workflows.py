@@ -534,7 +534,7 @@ class DeckyCopiesTest(WorkflowTest):
 
 
 class FinderSnapshotTest(WorkflowTest):
-    """Save each client's first finder snapshot to finder-data, creating the branch on the first run."""
+    """Retain first finder snapshots and prop observations, creating the branch on the first run."""
 
     def setUp(self):
         super().setUp()
@@ -547,17 +547,106 @@ class FinderSnapshotTest(WorkflowTest):
         git("clone", "-q", "--bare", str(seed), str(self.tmp / "remote.git"), cwd=self.tmp)
         self.state["remote"] = f"file://{self.tmp / 'remote.git'}"
 
-    def save(self, **snapshots):
+    def save(self, props=None, **snapshots):
         def prepare(runner_temp):
             folder = runner_temp / "steamui-watch" / "snapshots"
             folder.mkdir(parents=True)
             for name, content in snapshots.items():
                 (folder / f"{name}.json").write_text(content)
-        result, _ = self.run_step("decky-watch.yml", "Save finder snapshots", prepare=prepare)
+            if props is not None:
+                folder = runner_temp / "steamui-watch" / "props"
+                folder.mkdir()
+                for name, content in props.items():
+                    (folder / f"{name}.json").write_text(content)
+        result, runner = self.run_step("decky-watch.yml", "Save finder snapshots",
+                                       cwd=WORKFLOWS.parent.parent, prepare=prepare)
         self.assertEqual(result.returncode, 0, result.stderr)
+        return runner
 
     def branch(self, *args):
         return subprocess.run(["git", *args], cwd=self.tmp / "remote.git", check=True, capture_output=True, text=True).stdout
+
+    def props_json(self, version, radio_props):
+        manifest = json.loads((WORKFLOWS.parent.parent / "packages" / "decky-extras" / "extras.json").read_text())
+        return json.dumps({
+            "schema": 1, "branch": "stable", "version": str(version), "revision": 1,
+            "components": {
+                name: {"at": ["50777:abc"], "props": radio_props if name == "RadioButton" else ["children"], "notes": []}
+                for name in manifest["components"]
+            },
+        })
+
+    def open_reports(self, runner):
+        def prepare(runner_temp):
+            source = runner / "steamui-watch" / "reports"
+            target = runner_temp / "steamui-watch" / "reports"
+            target.parent.mkdir(parents=True)
+            shutil.copytree(source, target)
+        result, _ = self.run_step("decky-watch.yml", DeckyWatchTest.STEP, prepare=prepare)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    @unittest.skipUnless(shutil.which("bun"), "needs Bun for props report integration")
+    def test_first_prop_snapshot_is_a_baseline_and_rerun_retains_first_evidence(self):
+        first = self.save(props={"stable-100": self.props_json(100, ["children", "checked"])})
+        self.assertEqual(self.branch("ls-tree", "-r", "--name-only", "finder-data").split(),
+                         ["props/stable-100.json", "props/stable-100.reference.md"])
+        self.assertEqual(list((first / "steamui-watch" / "reports" / "props").glob("*.md")),
+                         [first / "steamui-watch" / "reports" / "props" / "stable-100.reference.md"])
+        first_reference = self.branch("show", "finder-data:props/stable-100.reference.md").strip()
+        before = self.branch("rev-list", "--count", "finder-data")
+
+        rerun = self.save(props={"stable-100": self.props_json(100, ["children", "replacement"])})
+        self.assertEqual(self.branch("show", "finder-data:props/stable-100.json").strip(),
+                         self.props_json(100, ["children", "checked"]))
+        self.assertEqual(self.branch("show", "finder-data:props/stable-100.reference.md").strip(), first_reference)
+        self.assertIn("`checked`", first_reference)
+        self.assertNotIn("`replacement`", first_reference)
+        self.assertEqual(self.branch("rev-list", "--count", "finder-data"), before)
+        self.assertFalse((rerun / "steamui-watch" / "reports" / "props" / "stable-100.md").exists())
+
+    @unittest.skipUnless(shutil.which("bun"), "needs Bun for props report integration")
+    def test_prop_change_opens_one_review_issue_and_is_not_auto_closed(self):
+        first = self.save(props={"stable-100": self.props_json(100, ["children", "checked"])})
+        self.open_reports(first)
+        self.assertEqual(self.state["issues"], [])
+
+        changed = self.save(props={"stable-200": self.props_json(200, ["children", "value"])})
+        report = changed / "steamui-watch" / "reports" / "props" / "stable-200.md"
+        self.assertTrue(report.exists())
+        self.open_reports(changed)
+        self.assertEqual([(issue["title"], issue["state"]) for issue in self.state["issues"]],
+                         [("Decky extra props changed in stable 200", "open")])
+        self.assertIn("finder-data/props/stable-200.reference.md", self.state["issues"][0]["body"])
+
+        rerun = self.save(props={"stable-200": self.props_json(200, ["children", "value", "rerun"])})
+        self.assertEqual(self.branch("show", "finder-data:props/stable-200.json").strip(),
+                         self.props_json(200, ["children", "value"]))
+        self.assertIn("stable 100", (rerun / "steamui-watch" / "reports" / "props" / "stable-200.md").read_text())
+        self.open_reports(rerun)
+        self.assertEqual(len(self.state["issues"]), 1, "a rerun uses the older baseline and opens no duplicate issue")
+
+        later = self.save(props={"stable-300": self.props_json(300, ["children", "value"])})
+        self.open_reports(later)
+        self.assertEqual(self.state["issues"][0]["state"], "open")
+
+    @unittest.skipUnless(shutil.which("bun"), "needs Bun for props report integration")
+    def test_failed_prop_publication_does_not_announce_an_unpublished_reference(self):
+        self.save(props={"stable-100": self.props_json(100, ["checked"])})
+        hook = self.tmp / "remote.git" / "hooks" / "pre-receive"
+        hook.write_text("#!/bin/sh\nexit 1\n")
+        hook.chmod(0o755)
+
+        def prepare(runner_temp):
+            props = runner_temp / "steamui-watch" / "props"
+            props.mkdir(parents=True)
+            (props / "stable-200.json").write_text(self.props_json(200, ["value"]))
+
+        result, runner = self.run_step("decky-watch.yml", "Save finder snapshots",
+                                       cwd=WORKFLOWS.parent.parent, prepare=prepare)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((runner / "steamui-watch" / "reports" / "props").exists())
+        self.assertEqual(self.branch("ls-tree", "-r", "--name-only", "finder-data").split(),
+                         ["props/stable-100.json", "props/stable-100.reference.md"])
 
     def test_first_snapshot_per_version_is_kept_and_reruns_commit_nothing(self):
         self.save(stable_100="first")

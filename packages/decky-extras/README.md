@@ -65,6 +65,14 @@ If a downloaded update makes a working finder missing or ambiguous, the entire u
 
 Runtime implementation changes require a new package version and immutable release asset. Finder-only changes require a monotonic manifest revision and can be picked up by already installed packages.
 
+## Observed props
+
+The daily check generates a [versioned reference for all extra components](https://github.com/beallio/steamui-watch/tree/finder-data/props). It lists prop names read by Steam and followed through supported component wrappers, plus analysis limits. The same JSON and Markdown files are in the `decky-extra-props` artifact on [Watch Decky finders runs](https://github.com/beallio/steamui-watch/actions/workflows/decky-watch.yml).
+
+This is a starting point for plugin authors, not TypeScript declarations or a complete API contract. Types, requiredness, defaults, and meanings remain unknown; dynamic code and custom wrappers can hide more props. Added or removed observed names produce a review issue. Check affected controls in Gaming Mode before changing a plugin.
+
+To generate the reference locally, see [prop discovery in the developer guide](../../DEVELOPER.md#discover-and-watch-extra-component-props).
+
 ## Compatibility limits
 
 Steam components are internal, version-dependent implementations. A finder must identify exactly one distinct Steam object; zero or multiple matches are exposed as unavailable, never guessed. The generated declarations use the exact component-name union but intentionally accept open props as `unknown`: this package does not promise undocumented Steam prop names, callback types, or compatibility across Steam updates. A unique source match does not prove that a component's prop contract stayed the same.

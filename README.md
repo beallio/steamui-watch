@@ -36,6 +36,7 @@ Plugin authors can install [Decky extras](packages/decky-extras/README.md) to us
 - Once a day, it checks the current stable and beta versions for parts of Steam that Decky needs. It reads Steam's files and runs Decky's searches in a browser without Steam. Missing parts open a **"Decky finders missing"** or **"Decky runtime finders failing"** issue.
 - It also checks whether its copies of Decky Loader's own searches need review. Changes open a **"Decky finder copies out of date"** issue. The searches of Decky's UI library are read from the library itself each day, so they need no copy.
 - Before publishing extra-control search updates, the service checks that every extra has exactly one match on both Steam stable and beta. A failed check leaves the previous published data in place.
+- Once a day, it also records the settings read by the 21 extra controls and makes a reference for plugin authors. Added or removed setting names open a **"Decky extra props changed"** issue. Unknown types and meanings stay marked as unknown.
 
 GitHub can run scheduled checks late.
 
@@ -54,6 +55,7 @@ Research into suggesting repairs for broken Decky searches is separate from the 
 - **"DeckThemes mappings changed":** review the reason in the issue, then use the [maintenance steps](DEVELOPER.md#reviewing-deckthemes-changes) to accept or skip the changes.
 - **"Decky finders missing" or "Decky runtime finders failing":** confirm the problem on a Deck or SteamOS test machine with that Steam version. Use the [Decky maintenance steps](DEVELOPER.md#keeping-the-decky-checks-current) to correct the check or the Decky search, then close the issue.
 - **"Decky finder copies out of date":** review what changed in Decky and update the checks if needed. Follow the [same maintenance steps](DEVELOPER.md#keeping-the-decky-checks-current) before closing the issue.
+- **"Decky extra props changed":** read the added and removed names and the analysis limits in the linked reference. Test affected controls in Steam before changing plugins, then close the issue after review. A removed name does not by itself prove that a setting stopped working.
 
 To publish now, open [Publish CSS mappings](https://github.com/beallio/steamui-watch/actions/workflows/publish-mappings.yml), select **Run workflow**, and choose the `main` branch.
 

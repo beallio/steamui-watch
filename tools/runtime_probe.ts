@@ -4,7 +4,7 @@
  * client bundle in headless Chrome, without Steam. decky-watch.yml runs it daily.
  *
  *   bun tools/runtime_probe.ts [--branch stable|publicbeta]... [--bundle-dir DIR]
- *                              [--decky-ui PATH] [--chrome PATH] [--report-dir DIR] [--snapshot-dir DIR] [--keep]
+ *                              [--decky-ui PATH] [--chrome PATH] [--report-dir DIR] [--snapshot-dir DIR] [--props-dir DIR] [--keep]
  *
  * Steam's page boots against a stand-in `SteamClient` that answers every call, then the stand-in
  * goes inert and each @decky/ui file is imported on its own, so one failing file cannot hide the
@@ -13,6 +13,8 @@
  * and the exit status only reports errors.
  * With --snapshot-dir, each branch whose finders all pass also gets SNAPSHOT_DIR/<stable|beta>-<version>.decky-ui-<version>.json:
  * for every finder result that is a Steam object, where Steam exports it and its fingerprint.
+ * With --props-dir, it also records observed prop names for every extra component, following forwarded props.
+ * Only names and analysis notes are saved; Valve's factory source stays in memory.
  * See docs/background.md, "Headless runtime trial" and "Finder snapshots". The loader's React-tree
  * finders need the Gaming Mode window, which this page never draws.
  */
@@ -22,6 +24,7 @@ import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import extrasData from "../packages/decky-extras/extras.json";
 import { matchExtras, parseManifest } from "../packages/decky-extras/match";
+import { analyzeProps } from "./prop_surface";
 
 const extras = parseManifest(extrasData);
 
@@ -42,6 +45,7 @@ const { values: args } = parseArgs({
     keep: { type: "boolean", default: false },
     "report-dir": { type: "string" },
     "snapshot-dir": { type: "string" },
+    "props-dir": { type: "string" },
   },
 });
 
@@ -207,7 +211,8 @@ type ProbeResult = {
   files: Record<string, string>;
   loader: Record<string, string>;
   extras: Record<string, number | string>;
-  snapshot: Snapshot;
+  snapshot: Record<string, { at: string[]; [key: string]: unknown }>;
+  factories?: Record<string, string>;
 };
 
 /** A CDP connection. `send`'s T is the protocol's result shape for `method`; it is not checked. */
@@ -319,7 +324,15 @@ export async function openSteamPage(root: string, work: string, chrome = args.ch
 async function probe(root: string, files: string[], work: string) {
   const page = await openSteamPage(root, work);
   try {
-    return await page.evaluate<ProbeResult>(PROBE(files));
+    const out = await page.evaluate<ProbeResult>(PROBE(files));
+    if (args["props-dir"] && Object.values(out.extras).every((count) => count === 1)) {
+      out.factories = await page.evaluate<Record<string, string>>(`(() => {
+        let require;
+        window.webpackChunksteamui.push([[Symbol("prop-surface")], {}, (r) => { require = r; }]);
+        return Object.fromEntries(Object.entries(require.m).map(([id, factory]) => [id, Function.prototype.toString.call(factory)]));
+      })()`);
+    }
+    return out;
   } finally {
     await page.close();
   }
@@ -362,6 +375,7 @@ if (import.meta.main) {
         }));
     if (args["report-dir"]) await mkdir(args["report-dir"], { recursive: true });
     if (args["snapshot-dir"]) await mkdir(args["snapshot-dir"], { recursive: true });
+    if (args["props-dir"]) await mkdir(args["props-dir"], { recursive: true });
     const ui = (await Bun.file(join(args["decky-ui"]!, "package.json")).json()).version;
     for (const { label, root, report } of bundles) {
       const files = await buildProbe(root, work);
@@ -373,6 +387,20 @@ if (import.meta.main) {
       if (args["snapshot-dir"] && bad.length === 0) {
         const snapshot = { client: label, decky_ui: ui, modules: out.boot.modules, finders: out.snapshot };
         await Bun.write(join(args["snapshot-dir"], `${report}.decky-ui-${ui}.json`), JSON.stringify(snapshot, null, 2) + "\n");
+      }
+      if (args["props-dir"] && out.factories) {
+        const entries = Object.fromEntries(Object.keys(extras.components).map((name) => {
+          const at = out.snapshot["extras:" + name]?.at;
+          if (!at?.length) throw new Error(`${label}: ${name} has no exported identity for prop analysis`);
+          return [name, at];
+        }));
+        const surfaces = analyzeProps(out.factories, entries);
+        const [branch, version] = report === "local" ? ["local", "0"] : report.split("-");
+        const components = Object.fromEntries(Object.entries(surfaces).map(([name, surface]) => [name, { at: entries[name], ...surface }]));
+        await Bun.write(join(args["props-dir"], `${branch}-${version}.json`), JSON.stringify({
+          schema: 1, branch, version, revision: extras.revision, components,
+        }, null, 2) + "\n");
+        console.log(`${label}: prop surfaces recorded for ${Object.keys(components).length} extras`);
       }
       ok &&= bad.length === 0;
     }

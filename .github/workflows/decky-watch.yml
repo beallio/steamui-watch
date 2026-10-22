@@ -64,7 +64,7 @@ jobs:
           reports="$RUNNER_TEMP/steamui-watch/reports"
           ui() { echo "$RUNNER_TEMP/steamui-watch/decky-ui/$1/package"; }
           bun tools/runtime_probe.ts --decky-ui "$(ui "$DECKY_UI")" --report-dir "$reports/runtime" \
-            --snapshot-dir "$RUNNER_TEMP/steamui-watch/snapshots"
+            --snapshot-dir "$RUNNER_TEMP/steamui-watch/snapshots" --props-dir "$RUNNER_TEMP/steamui-watch/props"
           # Pre-upgrade check: the npm latest the fork has not locked yet. Its passes close older upgrade reports.
           upgrade="$reports/upgrade/$DECKY_UI_LATEST"
           mkdir -p "$upgrade"
@@ -79,15 +79,21 @@ jobs:
             printf '`@decky/ui` %s is the npm `latest`; the fork locks %s. Fix this before the fork upgrades.\n\n%s\n' "$DECKY_UI_LATEST" "$DECKY_UI" "$body" > "$f"
           done
       - name: Save finder snapshots
-        # Where each finder's Steam object is and its fingerprint, per client and @decky/ui version:
-        # the baseline for finding a broken finder's object again in a later build.
+        # Retain first finder snapshots and prop observations as reviewed versioned evidence.
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           snapshots="$RUNNER_TEMP/steamui-watch/snapshots"
+          props="$RUNNER_TEMP/steamui-watch/props"
+          reports="$RUNNER_TEMP/steamui-watch/reports/props"
+          staged="$RUNNER_TEMP/steamui-watch/prop-reports"
           data="$RUNNER_TEMP/steamui-watch/finder-data"
-          compgen -G "$snapshots/*.json" >/dev/null || exit 0
+          has_snapshots=false
+          has_props=false
+          if compgen -G "$snapshots/*.json" >/dev/null; then has_snapshots=true; fi
+          if compgen -G "$props/*.json" >/dev/null; then has_props=true; fi
+          [ "$has_snapshots" = true ] || [ "$has_props" = true ] || exit 0
           gh auth setup-git
           gh repo clone "$GITHUB_REPOSITORY" "$data" -- --depth 1 --no-checkout
           # Exit status 2: the branch does not exist yet. Anything else is a real failure.
@@ -98,18 +104,47 @@ jobs:
             2) git -C "$data" checkout -q --orphan finder-data && git -C "$data" rm -rqf --cached --ignore-unmatch . ;;
             *) exit "$status" ;;
           esac
-          mkdir -p "$data/snapshots"
+          mkdir -p "$data/snapshots" "$data/props"
+          if [ "$has_props" = true ]; then
+            # Compare before retaining the current first-per-version evidence.
+            bun tools/props_report.ts "$props" --baseline-dir "$data/props" --out-dir "$staged"
+          fi
           # Keep the first snapshot of each client and @decky/ui version: it is the reviewed baseline.
           for f in "$snapshots"/*.json; do
+            [ -e "$f" ] || continue
             [ -e "$data/snapshots/${f##*/}" ] || cp "$f" "$data/snapshots/"
+          done
+          # Keep the first prop snapshot and its source-free author reference for each version.
+          for f in "$props"/*.json; do
+            [ -e "$f" ] || continue
+            name=${f##*/}
+            stem=${name%.json}
+            [ -e "$data/props/$name" ] || cp "$f" "$data/props/"
+            reference="$staged/$stem.reference.md"
+            [ ! -f "$reference" ] || [ -e "$data/props/$stem.reference.md" ] || cp "$reference" "$data/props/"
           done
           git -C "$data" config user.name 'github-actions[bot]'
           git -C "$data" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git -C "$data" add snapshots
+          [ "$has_snapshots" = false ] || git -C "$data" add snapshots
+          [ "$has_props" = false ] || git -C "$data" add props
           if ! git -C "$data" diff --cached --quiet; then
-            git -C "$data" commit -qm 'chore(finders): retain Decky finder snapshots'
+            git -C "$data" commit -qm 'chore(finders): retain Decky finder snapshots and extra prop observations'
             git -C "$data" push -q origin HEAD:finder-data
           fi
+          # Only announce changes whose reference was saved successfully.
+          if [ "$has_props" = true ]; then
+            mkdir -p "$reports"
+            cp "$staged"/*.md "$reports/"
+          fi
+      - name: Upload Decky extra prop references
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: decky-extra-props
+          path: |
+            ${{ runner.temp }}/steamui-watch/props/*.json
+            ${{ runner.temp }}/steamui-watch/reports/props/*.reference.md
+          if-no-files-found: ignore
       - name: Compare the finder copies with the decky-loader fork
         # decky_watch.py and tools/runtime_probe.ts copy the loader's finders by hand; report when the fork moves on.
         # The @decky/ui finders need no copy: each run reads them from the locked package.
@@ -154,13 +189,15 @@ jobs:
         run: |
           reports="$RUNNER_TEMP/steamui-watch/reports"
           titles=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --limit 1000 --json title --jq '.[].title')
-          for report in "$reports"/static/*.md "$reports"/runtime/*.md "$reports"/upgrade/*/*.md "$reports"/copies/*.md; do
+          for report in "$reports"/static/*.md "$reports"/runtime/*.md "$reports"/upgrade/*/*.md "$reports"/copies/*.md "$reports"/props/*.md; do
             [ -e "$report" ] || continue
             name=$(basename "$report" .md)
             case "$report" in
+              */props/*.reference.md) continue ;;
               */runtime/*) title="Decky runtime finders failing in ${name/-/ }" ;;
               */upgrade/*) ui=$(basename "$(dirname "$report")"); title="Decky finders failing with @decky/ui $ui in ${name/-/ }" ;;
               */copies/*) title="Decky finder copies out of date ($name)" ;;
+              */props/*) title="Decky extra props changed in ${name/-/ }" ;;
               *) title="Decky finders missing in ${name/-/ }" ;;
             esac
             # One issue per check and client version; a closed issue means "checked".
@@ -174,6 +211,7 @@ jobs:
           open=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json number,title --jq '.[] | "\(.number)\t\(.title)"')
           while IFS=$'\t' read -r number title; do
             case "$title" in
+              "Decky extra props changed in "*) continue ;;
               "Decky finders missing in "*) check=static ;;
               "Decky runtime finders failing in "*) check=runtime ;;
               # Any @decky/ui version: a pass with a newer latest makes an older latest's report moot.

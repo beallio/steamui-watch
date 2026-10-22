@@ -84,6 +84,29 @@ For toast dismissal, the browser check verifies that `NotificationStore.RemoveGr
 
 The browser uses a `SteamClient` stand-in, not a real Steam client. React-tree finders still need Gaming Mode. The history check verifies the store's shape, not that Gaming Mode has populated `m_history`. Confirm failures on a Steam Deck or SteamOS VM.
 
+## Discover and watch extra-component props
+
+A prop is a setting passed to a React component, such as `value` or `onChange`. The browser probe can record the prop names read by all components in `packages/decky-extras/extras.json`:
+
+```sh
+CHROME=/path/to/chrome bun tools/runtime_probe.ts --props-dir "$scratch/extra-props"
+bun tools/props_report.ts "$scratch/extra-props" \
+  --baseline-dir "$scratch/steamui-watch-finder-data/props" \
+  --out-dir "$scratch/extra-prop-reports"
+```
+
+The baseline directory is the `props/` folder from a `finder-data` checkout. It can be absent for the first run. The probe writes `<stable|beta>-<version>.json` only when every extra has one distinct match. An unrelated official finder failure does not prevent extra-prop analysis. With `--bundle-dir`, the output is `local-0.json`; the report tool can generate a local reference without a version comparison.
+
+`tools/prop_surface.ts` uses the installed Acorn parser. It resolves webpack exports and re-exports, reads destructured and member props, and follows props passed through `jsx`, `jsxs`, and `createElement`, including `forwardRef`, `memo`, class bases, and a uniquely resolved Gaming Mode component override. Rest omissions, later overwritten props, and positional `createElement` children are excluded from the forwarded names. Sibling forwarding paths are checked separately.
+
+These are observed names, not a complete or guaranteed prop contract. Types, requiredness, defaults, and meaning remain unknown. Dynamic access, helper calls, object copies, custom wrappers, unresolved targets, and ambiguous overrides produce uncertainty notes. Native HTML attributes are not enumerated. Module factory source stays in memory; saved observations and references contain no source bodies.
+
+The report tool writes a `<branch>-<version>.reference.md` author reference for every snapshot. It compares prop-name sets against the newest strictly older snapshot of the same branch and writes `<branch>-<version>.md` when names were added or removed. A missing or older-schema baseline seeds the history without a change alert. Component additions or removals in our manifest are not reported as Steam prop changes.
+
+The daily workflow runs this with the locked `@decky/ui`, not the pre-upgrade version. It retains the first prop snapshot and reference per client version under [`finder-data/props`](https://github.com/beallio/steamui-watch/tree/finder-data/props), and uploads JSON and references in the `decky-extra-props` workflow artifact. A retry still compares with the previous client version, not itself. Change reports become **"Decky extra props changed in …"** issues only after their references are saved successfully. These issues require manual review and do not close merely because the next daily check finds the same names.
+
+Review added and removed names, read the uncertainty notes, and check the affected controls in Steam before changing a plugin. A removed observed read does not prove that a prop stopped working; another code path can consume it.
+
 ## Build or serve the UI catalog
 
 `tools/decky_catalog.ts` uses the same tools and installed `@decky/ui` copy as the browser check. It draws supported component previews with Steam's own React and CSS. It also lists icons, class maps, helpers, and selected Steam components that `@decky/ui` does not expose by name. Each selected extra component has a source-text finder and a match count for that build.
@@ -204,4 +227,4 @@ The workflow closes reports by itself, with a comment that links the run:
 
 ## Research scope
 
-[Background and research notes](docs/background.md) cover cross-version finder matching, object-identity comparisons, component prop-surface checks, and discovery of Steam exports missing from `@decky/ui`. Finder-repair suggestions and prop-change analysis remain experiments, not daily workflow features. The retained tools are the mapping generator, source-text check, browser probe, and catalog. A rendered preview or passing finder does not replace testing a theme or plugin in Steam.
+[Background and research notes](docs/background.md) cover cross-version finder matching, object-identity comparisons, component prop-surface checks, and discovery of Steam exports missing from `@decky/ui`. Finder-repair suggestions remain an experiment. Extra-component prop discovery and change reports are retained daily workflow features. The other retained tools are the mapping generator, source-text check, browser probe, and catalog. A rendered preview or passing finder does not replace testing a theme or plugin in Steam.
