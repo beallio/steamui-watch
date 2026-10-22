@@ -141,3 +141,21 @@ test("follows imported memo targets in their own module scope", () => {
     props: ["forwarded", "value"], notes: [],
   });
 });
+
+test("retains prop reads inside declaration, assignment and parameter defaults", () => {
+  const factories = {
+    "1": factory(`
+      __webpack_require__.d(exports,{C:()=>C});
+      function C(p, value=p.parameterFallback){
+        const {selected=p.declarationFallback}=p;
+        let assigned; ({assigned=p.assignmentFallback}=p);
+        const callback=({nested=p.callbackFallback}={})=>nested;
+        function shadow(p, value=p.ghost){return value}
+        return [value,selected,assigned,callback];
+      }`),
+  };
+  expect(analyzeProps(factories, { C: ["1:C"] }).C).toEqual({
+    props: ["assigned", "assignmentFallback", "callbackFallback", "declarationFallback", "parameterFallback", "selected"],
+    notes: [],
+  });
+});

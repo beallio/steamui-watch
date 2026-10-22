@@ -597,6 +597,7 @@ export function analyzeProps(factories: Record<string, string>, entries: Record<
       } else if (!root) {
         for (const name of scopeLexicalNames(fn)) aliases.delete(name);
       }
+      for (const parameter of params) scanNode(parameter, aliases, classThis);
       const body = fn.body;
       if (body?.type === "BlockStatement") scanNode(body, aliases, classThis, true);
       else scanNode(body, aliases, classThis, false);
@@ -699,6 +700,7 @@ export function analyzeProps(factories: Record<string, string>, entries: Record<
           else aliases.delete(node.id.name);
         } else if (alias && node.id.type === "ObjectPattern") bindPropPattern(node.id, alias, aliases, props, notes, module);
         else if (alias && node.id.type === "ArrayPattern") notes.push(`array destructuring of props in module ${module.id}`);
+        scanNode(node.id, aliases, classThis);
         if (node.init) scanNode(node.init, aliases, classThis);
         return;
       }
@@ -711,6 +713,7 @@ export function analyzeProps(factories: Record<string, string>, entries: Record<
             notes.push(`props alias reassigned in module ${module.id}`);
           }
         } else if (alias && node.left.type === "ObjectPattern") bindPropPattern(node.left, alias, aliases, props, notes, module);
+        if (node.left.type === "ObjectPattern" || node.left.type === "ArrayPattern") scanNode(node.left, aliases, classThis);
         scanNode(node.right, aliases, classThis);
         return;
       }
