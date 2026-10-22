@@ -115,7 +115,9 @@ Catalog output contains Valve's styles, icons, and images. `docs/local/` is Git-
 
 To correct a finder, edit its clauses and increase `revision`. Run the probe on stable and beta. Every extra must match exactly one distinct Steam object. Re-exports of that same object count once. These checks establish identity and presence, not prop meaning or controller behavior.
 
-The publishing workflow runs the probe before deploying `decky-extras.json` alongside the CSS lists. A failure leaves the previous Pages deployment available. Plugin packages download the definitions on first use, keep validated data in `localStorage`, refresh hourly while mounted, and retry after a minute on failure. Downloads that would lose a working finder are rejected before replacing the cache. See the package README for unload cleanup and explicit fallback behavior.
+The publishing workflow runs the probe before deploying `decky-extras.json` alongside the CSS lists. If extras validation fails, it fetches and validates the last published extras file, stages that file beside the fresh CSS mappings, and skips the extras package release. A Decky finder failure therefore does not block CSS updates. If the previous extras file cannot be retrieved or validated, deployment stops rather than erase it.
+
+Plugin packages download the definitions on first use, keep validated data in `localStorage`, refresh hourly while mounted, and retry after a minute on failure. Downloads that would lose a working finder are rejected before replacing the cache. See the package README for unload cleanup and explicit fallback behavior.
 
 For a runtime implementation change, increase the package version and build it:
 

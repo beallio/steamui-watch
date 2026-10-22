@@ -191,6 +191,35 @@ class HistoryPersistenceTest(WorkflowTest):
         self.assertEqual(self.commits(), before)
 
 
+@unittest.skipUnless(shutil.which("bun"), "needs Bun for extras manifest validation")
+class ExtrasPublicationTest(WorkflowTest):
+    def test_failed_extras_check_keeps_published_extras_and_fresh_css(self):
+        previous = {"schema": 1, "revision": 2, "components": {
+            "RadioButton": {"title": "Radio", "description": "", "find": [[{"text": "previous"}]]}}}
+        old = self.tmp / "published.json"
+        old.write_text(json.dumps(previous))
+        curl = self.tmp / "bin" / "curl"
+        curl.write_text("#!/usr/bin/env python3\nimport os, shutil, sys\n"
+                        'shutil.copyfile(os.environ["PUBLISHED_EXTRAS"], sys.argv[sys.argv.index("--output") + 1])\n')
+        curl.chmod(0o755)
+
+        def prepare(runner):
+            site = runner / "steamui-watch" / "site"
+            site.mkdir(parents=True)
+            (site / "stable.json").write_text('{"stable":"new"}')
+            (site / "beta.json").write_text('{"beta":"new"}')
+            # An unvalidated candidate must not be served after the probe fails.
+            (site / "decky-extras.json").write_text('{"revision":999,"unvalidated":true}')
+
+        result, runner = self.run_step("publish-mappings.yml", "Retain published extras after validation failure",
+                                      cwd=WORKFLOWS.parent.parent, prepare=prepare, PUBLISHED_EXTRAS=str(old))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        site = runner / "steamui-watch" / "site"
+        self.assertEqual(json.loads((site / "decky-extras.json").read_text()), previous)
+        self.assertEqual(json.loads((site / "stable.json").read_text()), {"stable": "new"})
+        self.assertEqual(json.loads((site / "beta.json").read_text()), {"beta": "new"})
+
+
 class NewMappingIssueTest(WorkflowTest):
     STEP = "Open an issue for new mappings"
 

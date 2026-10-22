@@ -62,6 +62,8 @@ jobs:
         with:
           bun-version: "1.3.14"
       - name: Validate and stage Decky extras
+        id: extras
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -74,17 +76,27 @@ jobs:
           npm pack "@decky/ui@$ui" --pack-destination "$TMPDIR" --silent
           mkdir "$TMPDIR/decky-ui"
           tar -xzf "$TMPDIR/decky-ui-$ui.tgz" -C "$TMPDIR/decky-ui"
-          # A missing or ambiguous extra stops deployment; the previous Pages data stays live.
+          # Reject this extras update on a miss; CSS delivery still uses the previous extras below.
           bun tools/runtime_probe.ts --decky-ui "$TMPDIR/decky-ui/package"
           bun packages/decky-extras/build.ts --outdir "$TMPDIR/extras-package"
           npm pack "$TMPDIR/extras-package" --pack-destination "$TMPDIR" --silent
           cp packages/decky-extras/extras.json "$TMPDIR/site/decky-extras.json"
+      - name: Retain published extras after validation failure
+        if: steps.extras.outcome == 'failure'
+        run: |
+          previous="$RUNNER_TEMP/steamui-watch/previous-extras.json"
+          curl --fail --location --silent --show-error --max-time 30 \
+            https://beallio.github.io/steamui-watch/decky-extras.json --output "$previous"
+          bun -e 'import { parseManifest } from "./packages/decky-extras/match"; parseManifest(await Bun.file(Bun.argv.at(-1)).json());' "$previous"
+          cp "$previous" "$RUNNER_TEMP/steamui-watch/site/decky-extras.json"
+          echo "::warning::Extras validation failed. Publishing fresh CSS mappings with the previous extras definitions; skipping the extras release."
       - uses: actions/upload-pages-artifact@v5
         with:
           path: ${{ runner.temp }}/steamui-watch/site
       - uses: actions/deploy-pages@v5
         id: deployment
       - name: Publish the Decky extras package
+        if: steps.extras.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
