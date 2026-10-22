@@ -80,6 +80,19 @@ The default checks stable and beta. It prints results for each version and lists
 
 With `--snapshot-dir DIR`, it also writes `<stable|beta>-<version>.decky-ui-<version>.json` for each version whose finders all pass. A version with a failing finder gets no snapshot, because the workflow keeps the first snapshot forever; a later clean run writes it. For each finder result that is a Steam object, the file records where Steam exports it (`module:export`, or only the module for whole modules) and a fingerprint. The fingerprint holds string literals and property names for functions, plus prototype methods for classes. For objects, it holds the key names. Results are matched by identity, so the file includes finders that scan `CommonUIModule` directly. Helpers and wrappers that `@decky/ui` makes itself are left out, and so are loader checks that return only true or false.
 
+With `--baseline-dir DIR`, failing browser reports also look for repairs. Point it at the retained `finder-data/snapshots` directory:
+
+```sh
+CHROME=/path/to/chrome bun tools/runtime_probe.ts \
+  --baseline-dir "$scratch/finder-data/snapshots" --report-dir "$scratch/decky-runtime-reports"
+```
+
+The repair tool reads the newest strictly older snapshot from the same branch and exact `@decky/ui` version. It ranks distinct Steam objects using module/export locations and fingerprint overlap, including names that changed from member access to string literals. Re-exports of one object count once. A location alone is not enough, and close matches are reported as ambiguous.
+
+It builds a short source-text or stable property/method predicate, keeping old match text as an alternative where needed. It checks the combined predicate for one distinct target in both catalogs, then runs the real `@decky/ui` helper and requires the expected object by identity (`===`) on stable and beta. A single-branch or `--bundle-dir` run cannot produce a verified repair. Missing baselines, weak evidence, shared factory code and failed identity checks produce reasons, not guessed fixes.
+
+The report includes the baseline name, old and candidate export locations, match scores, shared fingerprint atoms, the proposed search and both identity results. Full function bodies stay in memory. Match scores are ranking evidence, not probabilities or a promise that a component behaves the same. Review and test suggestions in Gaming Mode before changing Decky code.
+
 For toast dismissal, the browser check verifies that `NotificationStore.RemoveGroupFromTray` and `NotificationStore.RemoveFromToastsWhere` are callable. The source-text check looks for both method names.
 
 The browser uses a `SteamClient` stand-in, not a real Steam client. React-tree finders still need Gaming Mode. The history check verifies the store's shape, not that Gaming Mode has populated `m_history`. Confirm failures on a Steam Deck or SteamOS VM.
@@ -198,6 +211,8 @@ The workflow also compares the copied finder versions with the fork's lock file 
 
 Each run also saves the finder snapshots to the `finder-data` branch as `snapshots/<stable|beta>-<version>.decky-ui-<version>.json`. If the branch does not exist, the run creates it. A run never replaces a file that already exists: the first snapshot of each client and `@decky/ui` version is the baseline. Use these files to find a broken finder's object again in a later build. Do not merge `finder-data` into `main`.
 
+Before the browser check, the workflow fetches a separate read-only baseline checkout. A missing data branch seeds an empty baseline; a fetch error remains a failed step, but the browser warning still runs. Suggested repairs are included in runtime and pre-upgrade issue bodies. A later run can update an open issue's generated report; closed issues stay closed. Snapshot retention and automatic issue closing are unchanged.
+
 When a **"Decky finder copies out of date"** issue opens:
 
 1. Review the linked fork comparison.
@@ -227,4 +242,4 @@ The workflow closes reports by itself, with a comment that links the run:
 
 ## Research scope
 
-[Background and research notes](docs/background.md) cover cross-version finder matching, object-identity comparisons, component prop-surface checks, and discovery of Steam exports missing from `@decky/ui`. Finder-repair suggestions remain an experiment. Extra-component prop discovery and change reports are retained daily workflow features. The other retained tools are the mapping generator, source-text check, browser probe, and catalog. A rendered preview or passing finder does not replace testing a theme or plugin in Steam.
+[Background and research notes](docs/background.md) cover cross-version finder matching, object-identity comparisons, component prop-surface checks, and discovery of Steam exports missing from `@decky/ui`. Finder-repair suggestions and extra-component prop reports are retained daily workflow features. The other retained tools are the mapping generator, source-text check, browser probe, and catalog. A rendered preview or passing finder does not replace testing a theme or plugin in Steam.

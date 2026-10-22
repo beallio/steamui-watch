@@ -33,7 +33,7 @@ Plugin authors can install [Decky extras](packages/decky-extras/README.md) to us
 - When the service finds a new Steam version, it opens a **"New CSS mappings"** issue. The notice says whether CSS class data changed or only the Steam version changed, and gets the **Changes** or **No change** label. If class data changed, it highlights added and removed names and links to the full differences. If a comparison is unavailable, it does not guess "No change."
 - Every 6 hours, a separate check looks for lists that have not been published for at least 24 hours. It opens a **"CSS mappings are overdue"** issue if needed, and closes it when a later check finds that publication has recovered.
 - Once a day, the service checks for changes to the DeckThemes team's translation data. It adopts changes that pass its safety checks. Other changes open a **"DeckThemes mappings changed"** issue for review.
-- Once a day, it checks the current stable and beta versions for parts of Steam that Decky needs. It reads Steam's files and runs Decky's searches in a browser without Steam. Missing parts open a **"Decky finders missing"** or **"Decky runtime finders failing"** issue.
+- Once a day, it checks the current stable and beta versions for parts of Steam that Decky needs. It reads Steam's files and runs Decky's searches in a browser without Steam. Missing parts open a **"Decky finders missing"** or **"Decky runtime finders failing"** issue. Runtime warnings can include a suggested search repair, checked on both versions. If the match is unclear, the warning says so instead.
 - It also checks whether its copies of Decky Loader's own searches need review. Changes open a **"Decky finder copies out of date"** issue. The searches of Decky's UI library are read from the library itself each day, so they need no copy.
 - Before publishing extra-control search updates, the service checks that every extra has exactly one match on both Steam stable and beta. A failed check leaves the previous published data in place.
 - Once a day, it also records the settings read by the 21 extra controls and makes a reference for plugin authors. Added or removed setting names open a **"Decky extra props changed"** issue. Unknown types and meanings stay marked as unknown.
@@ -46,7 +46,7 @@ These checks help find problems; they do not prove that every theme or plugin wo
 
 Some Decky checks still need a real Steam Deck or a SteamOS test machine. The catalog cannot preview every control, and it cannot test controller navigation, sounds, or features that need a running Steam client.
 
-Research into suggesting repairs for broken Decky searches is separate from the daily checks. The service does not repair them automatically.
+Suggested Decky repairs need maintainer review and testing in Steam. The service does not install or apply them automatically.
 
 ## For the owner
 

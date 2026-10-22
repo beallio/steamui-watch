@@ -48,6 +48,9 @@ elif args[:2] == ["issue", "create"]:
     issues.append({"number": len(issues) + 1, "title": opt("--title"), "body": body,
                    "state": "open", "assignee": opt("--assignee"),
                    "labels": [opt("--label")] if opt("--label") else []})
+elif args[:2] == ["issue", "edit"]:
+    issue = next(i for i in issues if i["number"] == int(args[2]))
+    issue["body"] = open(opt("--body-file")).read()
 elif args[:2] == ["issue", "close"]:
     next(i for i in issues if i["number"] == int(args[2]))["state"] = "closed"
 elif args[:2] == ["run", "list"]:
@@ -473,6 +476,20 @@ class DeckyWatchTest(WorkflowTest):
             ("Decky finders missing in beta 2001", "open")],
             "a closed issue is not reopened, and a version that extends another's number is not a duplicate")
 
+    def test_runtime_and_upgrade_evidence_refreshes_open_issues_only(self):
+        self.watch({"runtime": "beta-200", "upgrade/4.16.0": "stable-100"})
+        self.state["issues"][1]["state"] = "closed"
+        self.state["issues"][0]["body"] = "Warning without repair evidence"
+        self.state["issues"][1]["body"] = "Reviewed evidence"
+        result, _ = self.run_step(
+            "decky-watch.yml", self.STEP,
+            prepare=self.reports({"runtime": "beta-200", "upgrade/4.16.0": "stable-100"}, {}))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(self.state["issues"]), 2)
+        self.assertEqual(self.state["issues"][0]["body"], "runtime beta-200\n")
+        self.assertEqual(self.state["issues"][1]["body"], "Reviewed evidence")
+        self.assertEqual([issue["state"] for issue in self.state["issues"]], ["open", "closed"])
+
     def test_a_pass_closes_reports_of_the_same_check_and_branch_up_to_its_version(self):
         self.watch({"static": "beta-200 stable-100", "runtime": "beta-200 stable-100", "upgrade/4.16.0": "beta-200"})
         self.assertEqual(self.watch(passed={"runtime": "beta-201 stable-99", "upgrade/4.17.0": "beta-200"}), [
@@ -659,6 +676,24 @@ class FinderSnapshotTest(WorkflowTest):
         self.save(stable_100="third", beta_200="beta")
         self.assertEqual(self.branch("rev-list", "--count", "finder-data"), before)
         self.assertEqual(self.branch("log", "-1", "--format=%ae", "finder-data").strip(), BOT)
+
+    def test_fetch_baseline_distinguishes_missing_branch_and_retains_snapshots(self):
+        result, empty = self.run_step("decky-watch.yml", "Fetch finder baseline")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(list((empty / "steamui-watch" / "finder-baseline" / "snapshots").iterdir()), [])
+
+        self.save(stable_100='{"client":"1"}')
+        result, retained = self.run_step("decky-watch.yml", "Fetch finder baseline")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            (retained / "steamui-watch" / "finder-baseline" / "snapshots" / "stable_100.json").read_text(),
+            '{"client":"1"}')
+
+    def test_fetch_error_is_not_treated_as_missing_branch(self):
+        self.state["remote"] = f"file://{self.tmp / 'not-a-repository.git'}"
+        result, runner = self.run_step("decky-watch.yml", "Fetch finder baseline")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(list((runner / "steamui-watch" / "finder-baseline" / "snapshots").iterdir()), [])
 
     def test_failed_run_saves_nothing_and_the_retry_sets_the_baseline(self):
         # runtime_probe.ts writes no snapshot when a finder fails.
