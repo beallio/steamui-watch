@@ -8,7 +8,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # contents: write saves finder snapshots to the finder-data branch.
+  contents: write
   issues: write
 
 jobs:
@@ -43,7 +44,40 @@ jobs:
           npm pack "@decky/ui@$ui" --pack-destination "$TMPDIR" --silent
           mkdir "$TMPDIR/decky-ui"
           tar -xzf "$TMPDIR/decky-ui-$ui.tgz" -C "$TMPDIR/decky-ui"
-          bun tools/runtime_probe.ts --decky-ui "$TMPDIR/decky-ui/package" --report-dir "$RUNNER_TEMP/steamui-watch/reports/runtime"
+          bun tools/runtime_probe.ts --decky-ui "$TMPDIR/decky-ui/package" --report-dir "$RUNNER_TEMP/steamui-watch/reports/runtime" \
+            --snapshot-dir "$RUNNER_TEMP/steamui-watch/snapshots"
+      - name: Save finder snapshots
+        # Where each finder's Steam object is and its fingerprint, per client and @decky/ui version:
+        # the baseline for finding a broken finder's object again in a later build.
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          snapshots="$RUNNER_TEMP/steamui-watch/snapshots"
+          data="$RUNNER_TEMP/steamui-watch/finder-data"
+          compgen -G "$snapshots/*.json" >/dev/null || exit 0
+          gh auth setup-git
+          gh repo clone "$GITHUB_REPOSITORY" "$data" -- --depth 1 --no-checkout
+          # Exit status 2: the branch does not exist yet. Anything else is a real failure.
+          status=0
+          git -C "$data" ls-remote --exit-code --heads origin finder-data >/dev/null || status=$?
+          case $status in
+            0) git -C "$data" fetch -q --depth 1 origin finder-data && git -C "$data" checkout -q -B finder-data FETCH_HEAD ;;
+            2) git -C "$data" checkout -q --orphan finder-data && git -C "$data" rm -rqf --cached --ignore-unmatch . ;;
+            *) exit "$status" ;;
+          esac
+          mkdir -p "$data/snapshots"
+          # Keep the first snapshot of each client and @decky/ui version: it is the reviewed baseline.
+          for f in "$snapshots"/*.json; do
+            [ -e "$data/snapshots/${f##*/}" ] || cp "$f" "$data/snapshots/"
+          done
+          git -C "$data" config user.name 'github-actions[bot]'
+          git -C "$data" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C "$data" add snapshots
+          if ! git -C "$data" diff --cached --quiet; then
+            git -C "$data" commit -qm 'chore(finders): retain Decky finder snapshots'
+            git -C "$data" push -q origin HEAD:finder-data
+          fi
       - name: Compare the finder copies with the decky-loader fork
         # decky_watch.py and tools/runtime_probe.ts copy finders by hand; report when the fork moves on.
         if: always()

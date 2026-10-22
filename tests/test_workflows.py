@@ -423,6 +423,52 @@ class DeckyCopiesTest(WorkflowTest):
         self.assertIn("no @decky/ui version", result.stderr)
 
 
+class FinderSnapshotTest(WorkflowTest):
+    """Save each client's first finder snapshot to finder-data, creating the branch on the first run."""
+
+    def setUp(self):
+        super().setUp()
+        seed = self.tmp / "seed"
+        seed.mkdir()
+        (seed / "README.md").write_text("main")
+        git("init", "-q", "-b", "main", cwd=seed)
+        git("add", ".", cwd=seed)
+        git("-c", "user.name=seed", "-c", "user.email=seed@test", "commit", "-qm", "seed", cwd=seed)
+        git("clone", "-q", "--bare", str(seed), str(self.tmp / "remote.git"), cwd=self.tmp)
+        self.state["remote"] = f"file://{self.tmp / 'remote.git'}"
+
+    def save(self, **snapshots):
+        def prepare(runner_temp):
+            folder = runner_temp / "steamui-watch" / "snapshots"
+            folder.mkdir(parents=True)
+            for name, content in snapshots.items():
+                (folder / f"{name}.json").write_text(content)
+        result, _ = self.run_step("decky-watch.yml", "Save finder snapshots", prepare=prepare)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def branch(self, *args):
+        return subprocess.run(["git", *args], cwd=self.tmp / "remote.git", check=True, capture_output=True, text=True).stdout
+
+    def test_first_snapshot_per_version_is_kept_and_reruns_commit_nothing(self):
+        self.save(stable_100="first")
+        self.assertEqual(self.branch("ls-tree", "-r", "--name-only", "finder-data").split(), ["snapshots/stable_100.json"],
+                         "the new branch holds only snapshots, not main's files")
+        self.save(stable_100="second", beta_200="beta")
+        self.assertEqual(self.branch("show", "finder-data:snapshots/stable_100.json"), "first")
+        self.assertEqual(self.branch("show", "finder-data:snapshots/beta_200.json"), "beta")
+        before = self.branch("rev-list", "--count", "finder-data")
+        self.save(stable_100="third", beta_200="beta")
+        self.assertEqual(self.branch("rev-list", "--count", "finder-data"), before)
+        self.assertEqual(self.branch("log", "-1", "--format=%ae", "finder-data").strip(), BOT)
+
+    def test_failed_run_saves_nothing_and_the_retry_sets_the_baseline(self):
+        # runtime_probe.ts writes no snapshot when a finder fails.
+        self.save()
+        self.assertNotIn("finder-data", self.branch("branch"))
+        self.save(stable_100="clean")
+        self.assertEqual(self.branch("show", "finder-data:snapshots/stable_100.json"), "clean")
+
+
 
 class UpstreamAdoptTest(WorkflowTest):
     """New upstream dumps and matches merge into mapping-data; riskier changes still open an issue."""

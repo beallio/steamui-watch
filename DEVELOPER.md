@@ -73,6 +73,8 @@ CHROME=/path/to/chrome bun tools/runtime_probe.ts --branch publicbeta --decky-ui
 
 The default checks stable and beta. It prints results for each version and lists failed finders. It exits with status 1 if any finder fails. With `--report-dir DIR`, it writes reports for failing versions and reserves nonzero exit status for execution errors, as the workflow does.
 
+With `--snapshot-dir DIR`, it also writes `<stable|beta>-<version>.decky-ui-<version>.json` for each version whose finders all pass. A version with a failing finder gets no snapshot, because the workflow keeps the first snapshot forever; a later clean run writes it. For each finder result that is a Steam object, the file records where Steam exports it (`module:export`, or only the module for whole modules) and a fingerprint. The fingerprint holds string literals and property names for functions, plus prototype methods for classes. For objects, it holds the key names. Results are matched by identity, so the file includes finders that scan `CommonUIModule` directly. Helpers and wrappers that `@decky/ui` makes itself are left out, and so are loader checks that return only true or false.
+
 For toast dismissal, the browser check verifies that `NotificationStore.RemoveGroupFromTray` and `NotificationStore.RemoveFromToastsWhere` are callable. The source-text check looks for both method names.
 
 The browser uses a `SteamClient` stand-in, not a real Steam client. React-tree finders still need Gaming Mode. The history check verifies the store's shape, not that Gaming Mode has populated `m_history`. Confirm failures on a Steam Deck or SteamOS VM.
@@ -128,6 +130,8 @@ To skip the change, close the issue without advancing the baseline. A closed iss
 [Watch Decky finders](.github/workflows/decky-watch.yml) runs the text and browser checks daily. The browser check installs the `@decky/ui` version locked by `beallio/decky-loader`, not an independently selected latest version.
 
 The workflow also compares the copied finder versions with the fork's lock file and changed frontend lines that search Steam's code or use its globals. This comparison is a heuristic: some reported changes need no check update, and it can miss relevant changes.
+
+Each run also saves the finder snapshots to the `finder-data` branch as `snapshots/<stable|beta>-<version>.decky-ui-<version>.json`. If the branch does not exist, the run creates it. A run never replaces a file that already exists: the first snapshot of each client and `@decky/ui` version is the baseline. Use these files to find a broken finder's object again in a later build. Do not merge `finder-data` into `main`.
 
 When a **"Decky finder copies out of date"** issue opens:
 

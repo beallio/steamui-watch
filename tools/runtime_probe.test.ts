@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { cdp } from "./runtime_probe";
+import { cdp, fingerprint } from "./runtime_probe";
 
 type Socket = Bun.ServerWebSocket<undefined>;
 
@@ -52,4 +52,13 @@ test("replies resolve their own calls, in any order", async () => {
   expect((await b).name).toBe("B");
   expect(await a).toBe("A: nope");
   session.close();
+});
+
+test("fingerprint keeps string literals and long property names, not names inside strings", () => {
+  const src = String.raw`function(e){const{onChange:t,checked:n}=e;return(0,a.jsx)(o.Zt,{className:"Toggle \"on\"",label:'.notAProp',tip:` +
+    "`x${n}`" + String.raw`,id:e.id,children:e.childrenContainerWidth})}`;
+  expect(fingerprint(src)).toEqual({
+    strings: ['.notAProp', "Toggle \\\"on\\\"", "x${n}"],
+    names: ["checked", "children", "childrenContainerWidth", "className", "jsx", "label", "onChange", "tip"],
+  });
 });

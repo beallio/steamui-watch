@@ -4,14 +4,16 @@
  * client bundle in headless Chrome, without Steam. decky-watch.yml runs it daily.
  *
  *   bun tools/runtime_probe.ts [--branch stable|publicbeta]... [--bundle-dir DIR]
- *                              [--decky-ui PATH] [--chrome PATH] [--report-dir DIR] [--keep]
+ *                              [--decky-ui PATH] [--chrome PATH] [--report-dir DIR] [--snapshot-dir DIR] [--keep]
  *
  * Steam's page boots against a stand-in `SteamClient` that answers every call, then the stand-in
  * goes inert and each @decky/ui file is imported on its own, so one failing file cannot hide the
  * rest. Exit status 1 when any finder fails, unless --report-dir is given: then each branch
  * with failures gets REPORT_DIR/<stable|beta>-<version>.md and the exit status only reports errors.
- * See docs/background.md, "Headless runtime trial". The loader's React-tree finders need the
- * Gaming Mode window, which this page never draws.
+ * With --snapshot-dir, each branch whose finders all pass also gets SNAPSHOT_DIR/<stable|beta>-<version>.decky-ui-<version>.json:
+ * for every finder result that is a Steam object, where Steam exports it and its fingerprint.
+ * See docs/background.md, "Headless runtime trial" and "Finder snapshots". The loader's React-tree
+ * finders need the Gaming Mode window, which this page never draws.
  */
 import { $ } from "bun";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
@@ -33,6 +35,7 @@ const { values: args } = parseArgs({
     chrome: { type: "string", default: process.env.CHROME ?? "google-chrome" },
     keep: { type: "boolean", default: false },
     "report-dir": { type: "string" },
+    "snapshot-dir": { type: "string" },
   },
 });
 
@@ -61,24 +64,74 @@ export const GLOBALS = `
   const jsx = W.findModule((m) => (m.jsx && m.jsxs) || (m.jsx && Object.keys(m).length == 1));
   window.SP_JSX = jsx?.jsxs ? jsx : jsx && { jsx: jsx.jsx, jsxs: jsx.jsx, Fragment: window.SP_REACT?.Fragment };`;
 
+/**
+ * String literals and property names in minified source. Minification keeps both, so they identify
+ * the same code in a later build. Names shorter than 3 characters are left out: webpack export keys
+ * are minified. Runs in the page too, so it uses nothing from outside.
+ */
+export function fingerprint(source: string) {
+  const strings = new Set<string>(), names = new Set<string>();
+  // shortcut: a template literal counts as one string, `${…}` included; parse it if a matcher needs the parts.
+  const code = source.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g, (s) => {
+    strings.add(s.slice(1, -1).slice(0, 200));
+    return '""';
+  });
+  for (const m of code.matchAll(/\.([A-Za-z_$][\w$]{2,})|[{,]([A-Za-z_$][\w$]{2,}):/g)) names.add(m[1] ?? m[2]);
+  return { strings: [...strings].sort(), names: [...names].sort() };
+}
+
 const PROBE = (files: string[]) => `(async (files) => {
   window.__stubInert = true;
-  const out = { boot: {}, files: {}, loader: {} };
+  const out = { boot: {}, files: {}, loader: {}, snapshot: {} };
   let W;
   try { W = await import("/probe/webpack.js"); } catch (e) { out.boot.webpack = "threw: " + e; return out; }
   out.boot.modules = W.modules.size;
   ${GLOBALS}
+  // Finder results are recorded by identity, so it does not matter how a finder searched.
+  const fingerprint = ${fingerprint};
+  const where = new Map(), moduleIds = new Map();
+  for (const [id, m] of W.modules) {
+    if (!m || (typeof m !== "object" && typeof m !== "function")) continue;
+    moduleIds.set(m, id);
+    for (const k of Object.keys(m)) {
+      let v; try { v = m[k]; } catch { continue; }
+      if (v && (typeof v === "object" || typeof v === "function")) { if (!where.has(v)) where.set(v, []); where.get(v).push(id + ":" + k); }
+    }
+  }
+  const keysOf = (v) => {
+    const keys = new Set();
+    for (let o = v; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) for (const k of Object.getOwnPropertyNames(o)) keys.add(k);
+    keys.delete("constructor");
+    return [...keys].sort();
+  };
+  const describe = (v) => {
+    const f = v?.render ?? v?.type ?? v;
+    if (typeof f !== "function") return { keys: keysOf(v) };
+    const d = fingerprint(Function.prototype.toString.call(f));
+    const methods = f.prototype ? Object.getOwnPropertyNames(f.prototype).filter((k) => k !== "constructor").sort() : [];
+    return methods.length ? { ...d, methods } : d;
+  };
+  // Library-made objects (helpers, wrappers) are not Steam exports and are left out.
+  const record = (name, v) => {
+    if (!v || (typeof v !== "object" && typeof v !== "function")) return;
+    const at = where.get(v) ?? (moduleIds.has(v) ? [moduleIds.get(v)] : null);
+    if (!at) return;
+    try { out.snapshot[name] = { at, ...describe(v) }; } catch (e) { out.snapshot[name] = { at, error: String(e).slice(0, 200) }; }
+  };
   for (const k of ["SP_REACT", "SP_REACTDOM", "SP_JSX"]) out.boot[k] = !!window[k];
-  for (const k of ["CommonUIModule", "IconsModule", "ReactRouter"]) out.boot[k] = W[k] != null;
+  for (const k of ["CommonUIModule", "IconsModule", "ReactRouter"]) { out.boot[k] = W[k] != null; record(k, W[k]); }
   for (const f of files) {
     try {
       const m = await import("/probe/" + f);
       const missing = Object.entries(m).filter(([, v]) => v == null).map(([k]) => k);
       out.files[f] = missing.length ? "missing: " + missing.join(", ") : "ok";
+      for (const [k, v] of Object.entries(m)) record(f + ":" + k, v);
     } catch (e) { out.files[f] = "threw: " + String(e).slice(0, 200); }
   }
   // decky-loader frontend/src predicates that run without a rendered Gaming Mode tree.
-  const check = (name, fn) => { try { out.loader[name] = fn() ? "ok" : "missing"; } catch (e) { out.loader[name] = "threw: " + e; } };
+  const check = (name, fn) => {
+    try { const v = fn(); out.loader[name] = v ? "ok" : "missing"; record(name, v); } catch (e) { out.loader[name] = "threw: " + e; }
+  };
   const store = /^\\(\\)=>\\([\\w$]+\\|\\|(?:[\\w$]+\\(|\\([\\w$]+=)new [\\w$]+\\),[\\w$]+\\)$/;
   const backstack = () => W.findModuleByExport((e) => typeof e == "string" && e == "router-backstack", 20);
   const qam = () => W.findModuleByExport((e) => e?.type?.toString?.()?.includes("QuickAccessMenuBrowserView"));
@@ -138,7 +191,8 @@ export const jsxs = (...a) => window.SP_JSX.jsxs(...a);`);
 }
 
 type CdpReply = { id: number; result?: Record<string, unknown>; error?: { message: string } };
-type ProbeResult = { boot: Record<string, boolean | number | string>; files: Record<string, string>; loader: Record<string, string> };
+type Snapshot = Record<string, { at: string[] } & Record<string, unknown>>;
+type ProbeResult = { boot: Record<string, boolean | number | string>; files: Record<string, string>; loader: Record<string, string>; snapshot: Snapshot };
 
 /** A CDP connection. `send`'s T is the protocol's result shape for `method`; it is not checked. */
 export interface CdpClient {
@@ -264,8 +318,7 @@ function failures(label: string, out: ProbeResult) {
   return bad;
 }
 
-async function writeReport(name: string, label: string, bad: string[]) {
-  const ui = (await Bun.file(join(args["decky-ui"]!, "package.json")).json()).version;
+async function writeReport(name: string, label: string, ui: string, bad: string[]) {
   await Bun.write(join(args["report-dir"]!, `${name}.md`), [
     `Headless runtime check of the Steam Deck client \`${label}\` with \`@decky/ui\` ${ui}.`, "",
     ...bad.map((line) => `- ${line.replace(/^([^:]+):/, "**$1**:")}`), "",
@@ -288,10 +341,19 @@ if (import.meta.main) {
           return fetchBundle(b, join(work, b));
         }));
     if (args["report-dir"]) await mkdir(args["report-dir"], { recursive: true });
+    if (args["snapshot-dir"]) await mkdir(args["snapshot-dir"], { recursive: true });
+    const ui = (await Bun.file(join(args["decky-ui"]!, "package.json")).json()).version;
     for (const { label, root, report } of bundles) {
       const files = await buildProbe(root, work);
-      const bad = failures(label, await probe(root, files, work));
-      if (bad.length && args["report-dir"]) await writeReport(report, label, bad);
+      const out = await probe(root, files, work);
+      const bad = failures(label, out);
+      if (bad.length && args["report-dir"]) await writeReport(report, label, ui, bad);
+      // Only a clean run is a baseline: the workflow keeps the first file per version forever, so a
+      // partial snapshot would hide the good one a later run makes. A broken build falls back to an older snapshot.
+      if (args["snapshot-dir"] && bad.length === 0) {
+        const snapshot = { client: label, decky_ui: ui, modules: out.boot.modules, finders: out.snapshot };
+        await Bun.write(join(args["snapshot-dir"], `${report}.decky-ui-${ui}.json`), JSON.stringify(snapshot, null, 2) + "\n");
+      }
       ok &&= bad.length === 0;
     }
   } finally {
