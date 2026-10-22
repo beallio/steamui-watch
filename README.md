@@ -31,7 +31,7 @@ You do not need to run this tool to use the lists. Decky warnings are for mainta
 - Every 6 hours, a separate check looks for lists that have not been published for at least 24 hours. It opens a **"CSS mappings are overdue"** issue if needed, and closes it when a later check finds that publication has recovered.
 - Once a day, the service checks for changes to the DeckThemes team's translation data. It adopts changes that pass its safety checks. Other changes open a **"DeckThemes mappings changed"** issue for review.
 - Once a day, it checks the current stable and beta versions for parts of Steam that Decky needs. It reads Steam's files and runs Decky's searches in a browser without Steam. Missing parts open a **"Decky finders missing"** or **"Decky runtime finders failing"** issue.
-- It also checks whether its copies of Decky's searches need review. Changes open a **"Decky finder copies out of date"** issue.
+- It also checks whether its copies of Decky Loader's own searches need review. Changes open a **"Decky finder copies out of date"** issue. The searches of Decky's UI library are read from the library itself each day, so they need no copy.
 
 GitHub can run scheduled checks late.
 

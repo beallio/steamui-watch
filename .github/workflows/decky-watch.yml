@@ -25,43 +25,58 @@ jobs:
       - uses: oven-sh/setup-bun@v2.2.0
         with:
           bun-version: "1.3.14"
+      - name: Get @decky/ui
+        # The version the decky-loader fork locks, and npm's latest for the pre-upgrade check.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          dir="$RUNNER_TEMP/steamui-watch/decky-ui"
+          mkdir -p "$dir"
+          # awk reads to the end: exiting early would kill gh with SIGPIPE under pipefail.
+          ui=$(gh api repos/beallio/decky-loader/contents/frontend/pnpm-lock.yaml --jq .content | base64 -d |
+            awk '/^      .@decky\/ui.:$/ && !found { getline; getline; sub(/^ *version: */, ""); sub(/[(].*/, ""); print; found = 1 }')
+          [ -n "$ui" ] || { echo 'no @decky/ui version in the decky-loader lock file' >&2; exit 1; }
+          latest=$(npm view @decky/ui version)
+          for v in $(printf '%s\n' "$ui" "$latest" | sort -u); do
+            npm pack "@decky/ui@$v" --pack-destination "$dir" --silent
+            mkdir "$dir/$v"
+            tar -xzf "$dir/decky-ui-$v.tgz" -C "$dir/$v"
+          done
+          printf 'DECKY_UI=%s\nDECKY_UI_LATEST=%s\n' "$ui" "$latest" >> "$GITHUB_ENV"
       - name: Check Decky finders in the bundle text
-        run: uv run --locked --no-dev python decky_watch.py "$RUNNER_TEMP/steamui-watch/reports/static"
+        run: |
+          bun install --frozen-lockfile
+          table="$RUNNER_TEMP/steamui-watch/finder-table.json"
+          bun tools/finder_table.ts "$RUNNER_TEMP/steamui-watch/decky-ui/$DECKY_UI/package" > "$table"
+          uv run --locked --no-dev python decky_watch.py --ui-finders "$table" "$RUNNER_TEMP/steamui-watch/reports/static"
+          # Pre-upgrade: the reader must also understand npm's latest before the fork locks it.
+          if [ "$DECKY_UI_LATEST" != "$DECKY_UI" ]; then
+            bun tools/finder_table.ts "$RUNNER_TEMP/steamui-watch/decky-ui/$DECKY_UI_LATEST/package" > /dev/null
+          fi
       - name: Run Decky finders in headless Chrome
         # Runs even if the text check failed: the two checks are independent.
         if: always()
         # A hung browser fails this step; the issue step still runs.
         timeout-minutes: 15
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           export TMPDIR="${RUNNER_TEMP}/steamui-watch/runtime"
           mkdir -m 700 -p "$TMPDIR"
           reports="$RUNNER_TEMP/steamui-watch/reports"
-          # awk reads to the end: exiting early would kill gh with SIGPIPE under pipefail.
-          ui=$(gh api repos/beallio/decky-loader/contents/frontend/pnpm-lock.yaml -H 'Accept: application/vnd.github.raw' |
-            awk '/^      .@decky\/ui.:$/ && !found { getline; getline; sub(/^ *version: */, ""); sub(/[(].*/, ""); print; found = 1 }')
-          [ -n "$ui" ] || { echo 'no @decky/ui version in the decky-loader lock file' >&2; exit 1; }
-          probe() { # <@decky/ui version> <report dir> [probe options]
-            npm pack "@decky/ui@$1" --pack-destination "$TMPDIR" --silent
-            mkdir "$TMPDIR/decky-ui-$1"
-            tar -xzf "$TMPDIR/decky-ui-$1.tgz" -C "$TMPDIR/decky-ui-$1"
-            bun tools/runtime_probe.ts --decky-ui "$TMPDIR/decky-ui-$1/package" --report-dir "$2" "${@:3}"
-          }
-          probe "$ui" "$reports/runtime" --snapshot-dir "$RUNNER_TEMP/steamui-watch/snapshots"
+          ui() { echo "$RUNNER_TEMP/steamui-watch/decky-ui/$1/package"; }
+          bun tools/runtime_probe.ts --decky-ui "$(ui "$DECKY_UI")" --report-dir "$reports/runtime" \
+            --snapshot-dir "$RUNNER_TEMP/steamui-watch/snapshots"
           # Pre-upgrade check: the npm latest the fork has not locked yet. Its passes close older upgrade reports.
-          latest=$(npm view @decky/ui version)
-          upgrade="$reports/upgrade/$latest"
+          upgrade="$reports/upgrade/$DECKY_UI_LATEST"
           mkdir -p "$upgrade"
-          if [ "$latest" = "$ui" ]; then
+          if [ "$DECKY_UI_LATEST" = "$DECKY_UI" ]; then
             cp "$reports"/runtime/*.ok "$upgrade/" 2>/dev/null || true
             exit 0
           fi
-          probe "$latest" "$upgrade"
+          bun tools/runtime_probe.ts --decky-ui "$(ui "$DECKY_UI_LATEST")" --report-dir "$upgrade"
           for f in "$upgrade"/*.md; do
             [ -e "$f" ] || continue
             body=$(cat "$f")
-            printf '`@decky/ui` %s is the npm `latest`; the fork locks %s. Fix this before the fork upgrades.\n\n%s\n' "$latest" "$ui" "$body" > "$f"
+            printf '`@decky/ui` %s is the npm `latest`; the fork locks %s. Fix this before the fork upgrades.\n\n%s\n' "$DECKY_UI_LATEST" "$DECKY_UI" "$body" > "$f"
           done
       - name: Save finder snapshots
         # Where each finder's Steam object is and its fingerprint, per client and @decky/ui version:
@@ -96,7 +111,8 @@ jobs:
             git -C "$data" push -q origin HEAD:finder-data
           fi
       - name: Compare the finder copies with the decky-loader fork
-        # decky_watch.py and tools/runtime_probe.ts copy finders by hand; report when the fork moves on.
+        # decky_watch.py and tools/runtime_probe.ts copy the loader's finders by hand; report when the fork moves on.
+        # The @decky/ui finders need no copy: each run reads them from the locked package.
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -104,12 +120,7 @@ jobs:
           fork=beallio/decky-loader
           reports="$RUNNER_TEMP/steamui-watch/reports/copies"
           mkdir -p "$reports"
-          labels=$(uv run --locked --no-dev python -c 'import decky_watch as d; print(d.UI.split()[-1], d.LOADER.split()[-1])')
-          read -r ui_copied loader_copied <<<"$labels"
-          # awk reads to the end: exiting early would kill gh with SIGPIPE under pipefail.
-          ui_locked=$(gh api "repos/$fork/contents/frontend/pnpm-lock.yaml" --jq .content | base64 -d |
-            awk '/^      .@decky\/ui.:$/ && !found { getline; getline; sub(/^ *version: */, ""); sub(/[(].*/, ""); print; found = 1 }')
-          [ -n "$ui_locked" ] || { echo 'no @decky/ui version in the decky-loader lock file' >&2; exit 1; }
+          loader_copied=$(uv run --locked --no-dev python -c 'import decky_watch as d; print(d.LOADER.split()[-1])')
           compare=$(gh api "repos/$fork/compare/$loader_copied...main")
           # Changed frontend lines that search Steam's code or use Steam's globals. A heuristic: it
           # can miss a change, and it reports some changes that need no update.
@@ -119,22 +130,21 @@ jobs:
               else .patch | split("\n")[] | select(test("^[+-]") and test($re)) | "\($f): \(.)" end' <<<"$compare")
           # The compare API lists at most 300 files.
           truncated=$(jq '.files | length >= 300' <<<"$compare")
-          if [ "$ui_locked" = "$ui_copied" ] && [ -z "$changes" ] && [ "$truncated" = false ]; then
+          if [ -z "$changes" ] && [ "$truncated" = false ]; then
             # Marks the copies as current, which closes open copy reports.
             touch "$reports/ok"
             exit 0
           fi
           # The same differences give the same ID, so an issue opens once per new difference.
-          id=$(printf '%s\n%s\n%s\n' "$ui_locked" "$changes" "$truncated" | sha256sum | cut -c1-8)
+          id=$(printf '%s\n%s\n' "$changes" "$truncated" | sha256sum | cut -c1-8)
           {
-            printf 'The finder copies in `decky_watch.py` and `tools/runtime_probe.ts` follow `@decky/ui` %s and decky-loader `%s`. The fork has moved on.\n\n' "$ui_copied" "$loader_copied"
-            printf -- '- `@decky/ui` locked in the fork: `%s`\n' "$ui_locked"
+            printf 'The loader finder copies in `decky_watch.py` and `tools/runtime_probe.ts` follow decky-loader `%s`. The fork has moved on.\n\n' "$loader_copied"
             [ "$truncated" = false ] || printf -- '- The fork changed 300 or more files; GitHub lists only the first 300, so check the full comparison.\n'
             if [ -n "$changes" ]; then
               printf -- '- Changed lines that search Steam'"'"'s code or use Steam'"'"'s globals:\n\n```diff\n%s\n```\n' "$changes"
             fi
             printf '\n[Compare](https://github.com/%s/compare/%s...main)\n\n' "$fork" "$loader_copied"
-            printf 'Update `FINDERS`, `UI` and `LOADER` in `decky_watch.py` and the predicates in `tools/runtime_probe.ts` where needed. Then set `LOADER` to the reviewed fork commit and close this issue.\n'
+            printf 'Update the loader entries of `FINDERS` in `decky_watch.py` and the predicates in `tools/runtime_probe.ts` where needed. Then set `LOADER` to the reviewed fork commit. This issue closes by itself when the copies match the fork.\n'
           } > "$reports/$id.md"
       - name: Open and close issues for Decky finders
         # always(): report what either check found, even if the other one failed.

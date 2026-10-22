@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "devDependencies": {
+    "acorn": "8.19.0"
+  }
+}

@@ -1,7 +1,10 @@
+import json
 import re
+import tempfile
 import unittest
+from pathlib import Path
 
-from decky_watch import FINDERS, classes, code, missing, name, props
+from decky_watch import FINDERS, classes, code, load_ui_finders, missing, name, props
 
 BUNDLE = [
     'X.render=function(){return(0,a.jsx)(b,{setFocusedColumn:c})};',
@@ -57,6 +60,21 @@ class MissingTest(unittest.TestCase):
         self.assertEqual(len(qam), 1)
         bundle = ['A.type=function(){return"QuickAccessMenuBrowserView"};']
         self.assertEqual(missing(bundle, {}, qam), [])
+
+    def test_generated_table_loads_with_bounded_regexes(self):
+        table = {"ui": "9.9.9", "finders": [
+            {"name": "f.js: A", "code": [[{"text": "setFocusedColumn:"}, {"name": "Gone"}], [{"props": ["onActivate", "onCancel"], "from_start": False}]]},
+            {"name": "f.js: B", "code": [[{"regex": r"className:.+?\.Sep"}]]},
+            {"name": "f.js: C", "classes": {"has": ["Title"], "lacks": ["Page"]}}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "table.json"
+            path.write_text(json.dumps(table))
+            finders = load_ui_finders(path)
+        self.assertEqual({f.owner for f in finders}, {"@decky/ui 9.9.9"})
+        self.assertEqual([(f.name, r) for f, r in missing(BUNDLE + ['className:a.Sep'], MODULES, finders)], [])
+        far = ["className:" + "x" * 301 + ".Sep"]
+        self.assertEqual([f.name for f, _ in missing(far, {"7": {"Title": "a", "Page": "b"}}, finders)],
+                         ["f.js: A", "f.js: B", "f.js: C"], "`.+?` stops at 300 characters")
 
 
 if __name__ == "__main__":

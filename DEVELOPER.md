@@ -56,11 +56,15 @@ A finder is the search code Decky uses to locate a Steam component or store. The
 ### Source-text check
 
 ```sh
-python3 decky_watch.py "$scratch/decky-reports"
-python3 decky_watch.py "$scratch/decky-beta-reports" --branch publicbeta
+bun install
+bun tools/finder_table.ts /path/to/@decky/ui > "$scratch/finder-table.json"
+python3 decky_watch.py --ui-finders "$scratch/finder-table.json" "$scratch/decky-reports"
+python3 decky_watch.py --ui-finders "$scratch/finder-table.json" "$scratch/decky-beta-reports" --branch publicbeta
 ```
 
-This needs no data checkout. It prints missing-finder counts and writes one report per failing branch as `<stable|beta>-<version>.md`, and an empty `<stable|beta>-<version>.ok` for each passing branch. A text hit only proves that the text is somewhere in the bundle, not that the real finder selects the right object. Property and method checks see names only.
+`tools/finder_table.ts` reads the `@decky/ui` package's `dist/` and writes its finders as JSON. Without a path, it uses `../decky-loader/frontend/node_modules/@decky/ui`. For each finder it lists the text, regexes, prop lists and property names the predicate needs. It stops with status 1 if a predicate uses a form it cannot read; then add that form to the tool. The loader's finders stay in `FINDERS` in `decky_watch.py`.
+
+`decky_watch.py` needs no data checkout. It prints missing-finder counts and writes one report per failing branch as `<stable|beta>-<version>.md`, and an empty `<stable|beta>-<version>.ok` for each passing branch. A text hit only proves that the text is somewhere in the bundle, not that the real finder selects the right object. Property and method checks see names only.
 
 ### Browser check
 
@@ -135,11 +139,13 @@ Each run also saves the finder snapshots to the `finder-data` branch as `snapsho
 
 When a **"Decky finder copies out of date"** issue opens:
 
-1. Review the linked fork comparison and the locked `@decky/ui` version.
-2. Update `FINDERS` in `decky_watch.py` and the loader predicates in `tools/runtime_probe.ts` where dependencies changed. Include new uses of Steam globals, not just changed text finders.
-3. Set `UI` to the reviewed library version and `LOADER` to the reviewed fork commit in `decky_watch.py`. Advance the commit only after reviewing the changes; it is not a way to hide an alert.
+1. Review the linked fork comparison.
+2. Update the loader entries of `FINDERS` in `decky_watch.py` and the loader predicates in `tools/runtime_probe.ts` where dependencies changed. Include new uses of Steam globals, not just changed text finders.
+3. Set `LOADER` to the reviewed fork commit in `decky_watch.py`. Advance the commit only after reviewing the changes; it is not a way to hide an alert.
 4. Run the checks against current stable and beta bundles. Confirm checks that need Gaming Mode on a Deck or SteamOS VM.
-5. Publish the reviewed changes, then close the issue.
+5. Publish the reviewed changes. The issue closes by itself on the next run.
+
+A new `@decky/ui` version in the fork needs no update here: each run reads the finders from the locked version. If the text check step fails with "Cannot read … predicate part(s)", teach `tools/finder_table.ts` the new form.
 
 For **"Decky finders missing"** and **"Decky runtime finders failing"**, confirm the problem on the reported Steam version, fix the Decky finder or the incorrect local check, then close the issue. The workflow does not reopen a closed report with the same check and version.
 
@@ -147,7 +153,7 @@ The workflow closes reports by itself, with a comment that links the run:
 
 - A finder report closes when the same check passes on the same branch at the same or a newer client version. A check that did not run, or that failed with an error, closes nothing.
 - A pre-upgrade report closes when the pre-upgrade check passes on that branch with any `@decky/ui` version. A newer npm `latest` makes the older report moot. When the fork locks the npm `latest`, the locked browser check counts as the pre-upgrade check.
-- A copies report closes when the copies match the fork again, after you update `UI` and `LOADER`.
+- A copies report closes when the copies match the fork again, after you update `LOADER`.
 
 ## Troubleshooting
 

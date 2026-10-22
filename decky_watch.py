@@ -5,18 +5,21 @@ Decky Loader and @decky/ui find Steam components at runtime by text in their min
 same minified bundle from Valve's CDN and checks that each finder's text and class module
 still exist. Writes OUTDIR/<branch>-<version>.md for each branch with missing finders.
 
+The @decky/ui finders come from --ui-finders, the JSON that `bun tools/finder_table.ts` makes from
+the installed package; the loader's finders are copied by hand into FINDERS.
+
 The check is static: a hit proves the text is somewhere in the bundle, not that it is in the
 function the finder tests. Property and prototype names are only checked as names.
 """
 
 import argparse
+import json
 import re
 from pathlib import Path
 from typing import NamedTuple
 
 from css_mappings import BRANCHES, download_sources, extract_class_modules, fetch_manifest
 
-UI = "@decky/ui 4.15.1"
 LOADER = "decky-loader 36c0733"
 
 type Text = str | re.Pattern[str]
@@ -54,82 +57,33 @@ def name(word):
     return re.compile(rf"(?<![\w$]){re.escape(word)}(?![\w$])")
 
 
+def bounded(pattern):
+    """A JS regex as Python's, with `.+`/`.*` limited to 300 characters."""
+    # shortcut: unbounded, it would match across functions in a one-line bundle; 300 is a guess at one function.
+    return re.compile(re.sub(r"(?<!\\)\.([+*])", lambda m: ".{1,300}" if m[1] == "+" else ".{0,300}", pattern))
+
+
+def load_ui_finders(path):
+    """The @decky/ui finders from `bun tools/finder_table.ts` output."""
+    table = json.loads(Path(path).read_text(encoding="utf-8"))
+    owner = f"@decky/ui {table['ui']}"
+
+    def atom(a):
+        if "text" in a:
+            return a["text"]
+        if "regex" in a:
+            return bounded(a["regex"])
+        if "name" in a:
+            return name(a["name"])
+        return props(*a["props"], from_start=a["from_start"])
+
+    return tuple(
+        classes(owner, f["name"], *f["classes"]["has"], lacks=f["classes"]["lacks"]) if "classes" in f
+        else code(owner, f["name"], *(tuple(atom(a) for a in clause) for clause in f["code"]))
+        for f in table["finders"])
+
+
 FINDERS = (
-    # @decky/ui dist/webpack.js and dist/components/*.js
-    code(UI, "IconsModule/Spinner", (re.compile(r'Spinner\),children:\[\(0,\w+\.jsx\)\("path",\{d:"M18 '),
-                                     re.compile(r'Spinner\)}\)?,.\.createElement\("path",{d:"M18 '))),
-    code(UI, "ReactRouter", name("computeRootMatch")),
-    code(UI, "ButtonItem", (props("highlightOnFocus", "childrenContainerWidth", from_start=False),
-                            'childrenContainerWidth:"min"')),
-    code(UI, "Carousel", "setFocusedColumn:"),
-    code(UI, "ControlsList", "().ControlsListChild", "().ControlsListOuterPanel"),
-    code(UI, "Dialog components", ('jsx)("div",{...', 'jsx)("div",Object.assign({},',
-                                   'createElement("div",{...', 'createElement("div",Object.assign({},')),
-    code(UI, "DialogButtonPrimary", '"DialogButton","_DialogLayout","Primary"'),
-    code(UI, "DialogButton", '"DialogButton","_DialogLayout","Secondary"'),
-    code(UI, "DialogCheckbox", name("GetPanelElementProps"), name("SetChecked"), ('="DialogCheckbox"', "fallback:")),
-    code(UI, "Dropdown", name("SetSelectedOption"), name("BuildMenu")),
-    code(UI, "DropdownItem", props("dropDownControlRef", "description", from_start=False)),
-    code(UI, "ErrorBoundary", name("componentDidCatch"), "lastErrorKey"),
-    code(UI, "Field", '"shift-children-below"'),
-    code(UI, "FocusRing", ".GetShowDebugFocusRing())"),
-    code(UI, "Focusable", props("flow-children", "onActivate", "onCancel", "focusClassName", "focusWithinClassName")),
-    code(UI, "Marquee", ".Marquee", "--fade-length"),
-    code(UI, "showContextMenu", "GetContextMenuManagerFromWindow(", ".CreateContextMenuInstance("),
-    code(UI, "MenuItem", ("bPlayAudio:", name("OnMouseEnter"))),
-    code(UI, "Menu", (name("HideIfSubmenu"), "labelId")),
-    code(UI, "MenuGroup", name("OnOKButton"), ('this.props.tone=="emphasis"', '"emphasis"==this.props.tone'),
-         "bInGamepadUI:"),
-    # shortcut: `.+?` is bounded, or it would match across functions in a one-line bundle.
-    code(UI, "MenuSeparator", re.compile(r"className:.{0,300}?\.ContextMenuSeparator")),
-    code(UI, "showModal", "props.bDisableBackgroundDismiss"),
-    code(UI, "ConfirmModal", "bUpdateDisabled", "closeModal", "onGamepadCancel"),
-    code(UI, "ModalRoot", ("Either closeModal or onCancel should be passed to GenericDialog. Classes: ",
-                           name("m_mapModalManager"))),
-    code(UI, "ModalPosition", ".ModalPosition"),
-    code(UI, "SimpleModal", ".ShowPortalModal()", ".OnElementReadyCallbacks.Register("),
-    code(UI, "PanelSection", ".PanelSection"),
-    code(UI, "ProgressBar", re.compile(r'\.ProgressBar,(?:\w*==)?"standard"(?:==)?')),
-    code(UI, "ProgressBarWithInfo", (".ProgressBarFieldStatus,children", ".ProgressBarFieldStatus},")),
-    code(UI, "ProgressBarItem", props("indeterminate", "nTransitionSec", "nProgress")),
-    code(UI, "ScrollPanel", '{case"x":'),
-    code(UI, "ScrollPanelGroup", (".FocusVisibleChild(),[])", ".FocusVisibleChild()),[])")),
-    code(UI, "SidebarNavigation", props("pages", "fnSetNavigateToPage", "disableRouteReporting")),
-    code(UI, "SliderField", ("SliderField,fallback", 'SliderField",')),
-    code(UI, "SteamSpinner", "Steam Spinner"),
-    code(UI, "Tabs", ".TabRowTabs", "activeTab:", "(function()"),
-    code(UI, "TextField", name("validateUrl"), name("validateEmail")),
-    code(UI, "Toggle", ".ToggleOff)"),
-    code(UI, "ToggleField", ("ToggleField,fallback", 'ToggleField",')),
-    code(UI, "Router", name("NavigationManager")),
-    code(UI, "useParams", re.compile(r"return (\w*)\?\1\.params:{}")),
-    # @decky/ui dist/utils/static-classes.js
-    classes(UI, "quickAccessMenuClasses", "Title", "QuickAccessMenu"),
-    classes(UI, "scrollPanelClasses", "ScrollPanel"),
-    classes(UI, "gamepadDialogClasses", "GamepadDialogContent", lacks=("BindingButtons",)),
-    classes(UI, "quickAccessControlsClasses", "BatteryPercentageLabel", "PanelSection",
-            lacks=("vr-dashboard-bar-height", "QuickAccessMenu", "QuickAccess", "PerfProfileInfo")),
-    classes(UI, "updaterFieldClasses", "OOBEUpdateStatusContainer"),
-    classes(UI, "playSectionClasses", "PlayBarDetailLabel"),
-    classes(UI, "gamepadSliderClasses", "SliderControlPanelGroup"),
-    classes(UI, "appDetailsHeaderClasses", "TopCapsule"),
-    classes(UI, "appDetailsClasses", "HeaderLoaded"),
-    classes(UI, "gamepadUIClasses", "BasicUiRoot"),
-    classes(UI, "gamepadTabbedPageClasses", "GamepadTabbedPage"),
-    classes(UI, "gamepadContextMenuClasses", "BasicContextMenuModal"),
-    classes(UI, "achievementListClasses", "AchievementListItemBase", lacks=("Page",)),
-    classes(UI, "achievementPageClasses", "AchievementListItemBase", "Page"),
-    classes(UI, "mainMenuAppRunningClasses", "AppRunningControls", "OverlayAchievements"),
-    classes(UI, "basicAppDetailsSectionStylerClasses", "AppDetailsRoot"),
-    classes(UI, "steamSpinnerClasses", "SpinnerLoaderContainer"),
-    classes(UI, "footerClasses", "QuickAccessFooter"),
-    classes(UI, "appActionButtonClasses", "PlayButtonContainer"),
-    classes(UI, "libraryAssetImageClasses", "LongTitles", "GreyBackground"),
-    classes(UI, "gamepadLibraryClasses", "GamepadLibrary"),
-    classes(UI, "focusRingClasses", "FocusRingRoot"),
-    classes(UI, "searchBarClasses", "SearchAndTitleContainer"),
-    classes(UI, "mainBrowserClasses", "MainBrowserContainer"),
-    # decky-loader frontend/src
     # errorboundary-hook.tsx anchors this to the whole function; a bundle search cannot.
     code(LOADER, "errorboundary-hook: error reporting store",
          re.compile(r"\(\)=>\([\w$]+\|\|(?:[\w$]+\(|\([\w$]+=)new [\w$]+\),[\w$]+\)"), name("BIsBlacklisted")),
@@ -200,13 +154,15 @@ def main(argv=None):
     parser.add_argument("outdir", type=Path,
                         help="directory for the <branch>-<version>.md reports; a passing version gets an empty .ok file")
     parser.add_argument("--branch", choices=BRANCHES, action="append", help="Valve branch (default: both)")
+    parser.add_argument("--ui-finders", type=Path, required=True, help="output of `bun tools/finder_table.ts`")
     args = parser.parse_args(argv)
+    finders = load_ui_finders(args.ui_finders) + FINDERS
     args.outdir.mkdir(parents=True, exist_ok=True)
     for branch in args.branch or BRANCHES:
         version, fields = fetch_manifest(branch)
         sources = download_sources(fields)
-        misses = missing(sources, extract_class_modules(sources))
-        print(f"{branch} {version}: {len(misses)} of {len(FINDERS)} finders missing")
+        misses = missing(sources, extract_class_modules(sources), finders)
+        print(f"{branch} {version}: {len(misses)} of {len(finders)} finders missing")
         for finder, reason in misses:
             print(f"  {finder.owner} {finder.name}: {reason}")
         name = f"{BRANCHES[branch]}-{version}"

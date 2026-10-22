@@ -1,4 +1,5 @@
 __pycache__/
 .venv/
+node_modules/
 # Generated from Valve's client bundle (Steam CSS, icons, images); keep local, do not publish.
 docs/local/
