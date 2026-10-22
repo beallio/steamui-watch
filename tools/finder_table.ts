@@ -49,6 +49,8 @@ class Reader {
   searched = false;
   /** The current predicate's parameters: only names tested on them are Steam names (not `window.SP_REACT`). */
   params = new Set<string>();
+  /** Inside a predicate, a form this reader does not know is reported instead of read as "no constraint". */
+  inPredicate = false;
   where = "";
 
   fail(why: string, n: Node) {
@@ -65,7 +67,12 @@ class Reader {
       case "UnaryExpression": return []; // `!x`, `typeof x`: no needle
       case "BinaryExpression": {
         const text = literalText(n.left);
-        return n.operator === "in" && text !== undefined ? [[{ name: text }]] : this.within(n);
+        if (n.operator === "in" && text !== undefined) return [[{ name: text }]];
+        // `typeof m == "object"` says nothing about the bundle; any other comparison with text is a needle this reader cannot use.
+        const typeofTest = [n.left, n.right].some((s) => s.type === "UnaryExpression" && s.operator === "typeof");
+        if (this.inPredicate && !typeofTest && [n.left, n.right].some((s) => literalText(s) !== undefined))
+          return this.fail(`comparison \`${n.operator}\` with text`, n);
+        return this.within(n);
       }
       case "MemberExpression": {
         const names: Cnf = [];
@@ -74,21 +81,25 @@ class Reader {
           const p = propName(m);
           if (p !== undefined && !GENERIC.has(p)) names.unshift([{ name: p }]);
         }
-        return and(m.type === "Identifier" && this.params.has(m.name) ? names : [], this.cnf(m));
+        const base = m.type === "CallExpression" ? this.call(m, false) : this.within(m);
+        return and(m.type === "Identifier" && this.params.has(m.name) ? names : [], base);
       }
-      case "CallExpression": return this.call(n);
-      default: return this.within(n);
+      case "CallExpression": return this.call(n, true);
+      case "Identifier": case "Literal": case "ThisExpression": return [];
+      default: return this.inPredicate ? this.fail(`${n.type} in a predicate`, n) : this.within(n);
     }
   }
 
-  call(n: Node): Cnf {
+  /** `test`: the call's result is used as a condition (not as a receiver or argument). */
+  call(n: Node, test: boolean): Cnf {
     const callee = n.callee.type === "ChainExpression" ? n.callee.expression : n.callee;
+    const unknown = (what: string) => (test && this.inPredicate ? this.fail(`${what} as a condition`, n) : this.within(n));
     if (callee.type === "Identifier" && SEARCH_HELPERS.has(callee.name)) {
       this.searched = true;
       return this.predicate(n.arguments[0]);
     }
     if (callee.type === "Identifier" && CLASS_HELPERS.has(callee.name)) return this.fail(`${callee.name} outside a declaration`, n);
-    if (callee.type !== "MemberExpression") return this.within(n);
+    if (callee.type !== "MemberExpression") return unknown("a function call");
     const method = propName(callee);
     if (method === "includes") {
       const text = literalText(n.arguments[0]);
@@ -104,7 +115,7 @@ class Reader {
       this.searched = true;
       return and(this.within(callee.object), this.predicate(n.arguments[0]));
     }
-    return this.within(n);
+    return unknown(`\`.${method}()\``);
   }
 
   /** The searches nested in a value (arguments, receivers); nested functions run later and are skipped. */
@@ -113,7 +124,7 @@ class Reader {
     for (const [k, v] of Object.entries(n)) {
       if (k === "type" || !v || typeof v !== "object") continue;
       for (const child of Array.isArray(v) ? v : [v]) {
-        if (child && typeof child.type === "string" && !isFunction(child)) out.push(child.type === "CallExpression" ? this.call(child) : this.within(child));
+        if (child && typeof child.type === "string" && !isFunction(child)) out.push(child.type === "CallExpression" ? this.call(child, false) : this.within(child));
       }
     }
     return and(...out);
@@ -122,12 +133,13 @@ class Reader {
   /** A finder's predicate: truthy when any truthy `return` is reached. */
   predicate(fn: Node): Cnf {
     if (!isFunction(fn)) return this.fail("search without a predicate function", fn ?? { start: -1 });
-    const outer = this.params;
+    const outer = [this.params, this.inPredicate] as const;
     this.params = new Set(fn.params.filter((p: Node) => p.type === "Identifier").map((p: Node) => p.name));
+    this.inPredicate = true;
     try {
       return this.body(fn);
     } finally {
-      this.params = outer;
+      [this.params, this.inPredicate] = outer;
     }
   }
 

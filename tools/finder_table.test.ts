@@ -37,14 +37,21 @@ test("block predicates, chained private searches and class finders", () => {
 });
 
 test("unknown predicate forms are reported, not dropped", () => {
-  const { unread } = table(`
+  const { entries, unread } = table(`
     const needle = "x";
     export const A = findModuleExport((e) => e.toString().includes(needle));
     export const B = findModuleExport((e) => someRegex.test(e.toString()));
-    export const C = findClass("1", "Name");`);
+    export const C = findClass("1", "Name");
+    export const D = findModuleExport((e) => e.toString().startsWith("needle"));
+    export const E = findModuleExport((e) => e.Ok ? e.toString().includes("a") : e.toString().includes("b"));
+    export const F = findModuleExport((e) => e.displayName == "Foo" && typeof e == "function");`);
+  expect(entries).toEqual([]);
   expect(unread.map((u) => u.replace(/ at offset \d+$/, ""))).toEqual([
     "f.js: A: `.includes()` with a non-literal argument",
     "f.js: B: `.test()` on an unknown regex",
     "f.js: C: findClass is not supported",
+    "f.js: D: `.startsWith()` as a condition",
+    "f.js: E: ConditionalExpression in a predicate",
+    "f.js: F: comparison `==` with text",
   ]);
 });
