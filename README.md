@@ -1,6 +1,16 @@
 # CSSLoader-Mappings
 Internal css mappings to translate css from older Steam clients to new ones
 
+This is the retained data branch for [steamui-watch](https://github.com/beallio/steamui-watch).
+It keeps older Steam class names and reviewed corrections so themes can still use them after updates.
+Use the normal Steam Deck tools in that repository to update the lists; do not replace this branch with a fresh upstream copy.
+
+The pipeline keeps continuing modules separate from new modules that look similar.
+When an old module moves and Steam reuses its number, both modules keep separate histories.
+Older generated class names remain valid through the seed data.
+See the [developer guide](https://github.com/beallio/steamui-watch/blob/main/DEVELOPER.md#generate-css-mappings-locally) for maintenance and test commands.
+
+
 
 ### Format:
 

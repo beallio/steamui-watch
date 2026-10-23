@@ -116,6 +116,8 @@ class Chain:
         self.add(starting_version, starting_module_id, is_starting_beta)
     
     def add(self, version : str, module_id : str, is_beta : bool):
+        if version in self.chain and self.chain[version] != module_id:
+            raise Exception(f"Chain {self.id} already contains a different module for version {version}")
         self.chain[version] = module_id
 
         id = get_module_id(version, module_id, is_beta)
@@ -147,19 +149,29 @@ if __name__ == "__main__":
     for mapping in all_version_chain:
         success = 0
         fail = 0
+        base_is_beta = mapping.base_version.type.lower() == "beta"
+        source_chains = {
+            module_id: TRACKER.get(get_module_id(mapping.base_version.timestamp, module_id, base_is_beta))
+            for module_id in mapping.base_ids
+        }
+        claimed_chains = {chain for module_id, chain in source_chains.items()
+                          if chain is not None and mapping.map(module_id) is not None}
 
         for new_module in mapping.new:
             existing_stable_chain_id = get_module_id(last_stable, new_module.dst, False)
             existing_beta_chain_id = get_module_id(last_beta, new_module.dst, True)
+            # A new module cannot take a chain already continuing in this version.
 
-            if existing_beta_chain_id in TRACKER:
+            if existing_beta_chain_id in TRACKER and TRACKER[existing_beta_chain_id] not in claimed_chains:
                 chain : Chain = TRACKER[existing_beta_chain_id]
                 chain.add(mapping.new_version.timestamp, new_module.dst, mapping.is_beta)
-            elif existing_stable_chain_id in TRACKER:
+            elif existing_stable_chain_id in TRACKER and TRACKER[existing_stable_chain_id] not in claimed_chains:
                 chain : Chain = TRACKER[existing_stable_chain_id]
                 chain.add(mapping.new_version.timestamp, new_module.dst, mapping.is_beta)
             else:
-                chains.append(Chain(mapping.new_version.timestamp, new_module.dst, mapping.is_beta))
+                chain = Chain(mapping.new_version.timestamp, new_module.dst, mapping.is_beta)
+                chains.append(chain)
+            claimed_chains.add(chain)
                 
             success += 1
 
@@ -171,16 +183,10 @@ if __name__ == "__main__":
                 fail += 1
                 continue
 
-            existing_stable_chain_id = get_module_id(last_stable, old_module_id, False)
-            existing_beta_chain_id = get_module_id(last_beta, old_module_id, True)
-
-            if existing_beta_chain_id in TRACKER:
-                chain : Chain = TRACKER[existing_beta_chain_id]
-            elif existing_stable_chain_id in TRACKER:
-                chain : Chain = TRACKER[existing_stable_chain_id]
-            else:
+            chain = source_chains[old_module_id]
+            if chain is None:
                 fail += 1
-                print(f"Chain from {last_stable}|{last_beta}:{old_module_id} to {mapping.new_version.timestamp}:{new_module_id} does not exist!")
+                print(f"Chain from {mapping.base_version}:{old_module_id} to {mapping.new_version}:{new_module_id} does not exist!")
                 continue
 
             success += 1
