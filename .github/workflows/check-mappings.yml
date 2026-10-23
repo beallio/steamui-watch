@@ -1,0 +1,44 @@
+name: Check retained mapping pipeline
+
+on:
+  pull_request:
+    branches: [mapping-data]
+  push:
+    branches: [mapping-data]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    env:
+      TMPDIR: ${{ runner.temp }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: "0.13.0"
+      - name: Test module histories
+        run: uv run --no-project --python 3.14 python -m unittest discover -s tests
+      - name: Build retained mappings
+        run: |
+          uv run --no-project --python 3.14 python webpack_id_mappings.py
+          uv run --no-project --python 3.14 python classname_mappings.py
+          uv run --no-project --python 3.14 python backport_classname_mappings.py
+      - name: Check complete history coverage
+        run: |
+          uv run --no-project --python 3.14 python - <<'PY'
+          import json
+          from pathlib import Path
+
+          expected = {
+              (path.name.split(".")[0], module)
+              for path in Path("webpack").glob("*.json")
+              for module in json.loads(path.read_text())
+          }
+          chains = json.loads(Path("webpack_id_mappings.json").read_text())
+          actual = [point for chain in chains.values() for point in chain.items()]
+          assert len(actual) == len(set(actual)), "A module has more than one history"
+          assert set(actual) == expected, "Some retained modules have missing or invalid histories"
+          PY

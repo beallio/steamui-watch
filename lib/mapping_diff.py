@@ -12,6 +12,10 @@ class MappingDiff:
         start = time()
         base = self.base.load()
         new = self.new.load()
+        fuzzy_base = Webpack({
+            module.id: module.mappings for module in base.modules
+            if module.id not in new.ids or module.match(new.ids[module.id]) <= MATCH_LIMIT
+        })
 
         tracked_matches : list[WebpackModuleMatch] = []
         exists_count = 0
@@ -23,7 +27,7 @@ class MappingDiff:
                 exists_count += 1
                 continue
 
-            matches = base.match(x)
+            matches = fuzzy_base.match(x)
 
             if len(matches.matches) <= 0:
                 new_ids.append(matches)
@@ -44,6 +48,11 @@ class MappingDiff:
             if not found:
                 print(f"New module with id {x.search.id} found no candidates ({str(x)}), assuming this is a new module")
                 new_ids.append(x)
+
+        for module_id in mappings:
+            if module_id in new.ids:
+                new_ids.append(WebpackModuleMatch(new.ids[module_id], []))
+                exists_count -= 1
 
         print(f"Finished mapping {self.base.timestamp} -> {self.new.timestamp} in {time() - start}s\nExists: {exists_count}, New: {len(new_ids)}, Mapped: {len(mappings)}\nBase module count: {len(base.modules)}, New module count: {len(new.modules)}")
         
