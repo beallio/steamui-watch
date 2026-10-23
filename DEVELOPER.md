@@ -40,6 +40,16 @@ python3 css_mappings.py "$scratch/steamui-watch-mapping-data"
 
 Use the existing scratch checkout on later runs. It holds the upstream pipeline, seed data, retained Steam versions, and reviewed fixes. Starting again from DeckThemes would omit this service's added history and fixes.
 
+The retained pipeline is upstream plus reviewed history fixes. It excludes a fuzzy source while its same-ID module still meets the pipeline's key-overlap match threshold. A genuinely reused ID or split remainder is listed as a new identity. Stable and beta transitions follow their actual base version, and one history cannot hold two different modules at the same version. The source checkout rejects a retained match that moves a still-present source without an explicit new-identity record.
+
+Run its small, inline-data regressions from the data checkout:
+
+```sh
+uv run --no-project --python 3.14 python -m unittest discover -s tests
+```
+
+The `mapping-data` branch has its own PR/push check for those tests and the real retained pipeline. Keep its reviewed transition maps, raw inputs and legacy class-name seeds; do not regenerate all matches and overwrite hand corrections. For a history repair, compare every output, retain all older class names and aliases, and review changed destinations before publication.
+
 The tool gets Valve's current stable and beta versions, downloads bundles it has not seen, checks their SHA-256 hashes, and extracts CSS class modules. It then runs the DeckThemes pipeline to produce `stable.json` and `beta.json` in the data checkout. It checks that both outputs have the expected JSON structure. This takes a few minutes and does not publish anything.
 
 | Option | What it does |
@@ -237,6 +247,7 @@ The workflow closes reports by itself, with a comment that links the run:
 - **"SHA-256 does not match the manifest":** do not use the downloaded bundle. Retry the download; if it keeps failing, investigate the connection or Valve's files.
 - **"only N class modules found":** the parser found too few modules and stopped. Steam's bundle format may have changed; investigate before publishing.
 - **"has its own history"** or **"is used twice":** a hand-made match in `webpack-mappings/` is invalid. Remove or correct the match without discarding retained history.
+- **"still exists":** a match moves a source whose numeric ID remains in the destination dump. Keep the continuing module's history. If the number belongs to a different module now, record that new identity in the transition's `new` list after checking its properties and class names.
 - **"module ... is not in version ...":** a match refers to a module absent from its source or target dump. Check both dumps and correct the match.
 - **HTTP 403 errors:** Valve refused the request. Check network restrictions and try another connection.
 
