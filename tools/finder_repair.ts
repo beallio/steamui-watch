@@ -291,6 +291,23 @@ export function makeRepair(
   return { expression, reason: "The generated predicate selects exactly one object in every supplied catalog.", checks };
 }
 
+type FinderHelpers = {
+  findModule(predicate: (value: unknown) => unknown): unknown;
+  findModuleExport(predicate: (value: unknown) => unknown): unknown;
+};
+
+/** Count every real helper match, including defaults and re-exports hidden by a first-match result. */
+export function checkRepair(find: (helpers: FinderHelpers) => unknown, helpers: FinderHelpers, expected: unknown) {
+  const selected = find(helpers);
+  const matches = new Set<unknown>();
+  const scan = (helper: keyof FinderHelpers, predicate: (value: unknown) => unknown) => {
+    helpers[helper]((value) => { if (predicate(value)) matches.add(value); return false; });
+  };
+  // Returning nothing makes an OR search visit every helper instead of stopping at its first match.
+  find({ findModule: (predicate) => scan("findModule", predicate), findModuleExport: (predicate) => scan("findModuleExport", predicate) });
+  return { same: selected === expected && matches.has(expected), matches: matches.size };
+}
+
 function numericParts(version: string): string[] | undefined {
   if (!/^\d+(?:\.\d+)*$/.test(version)) return undefined;
   return version.split(".").map((part) => part.replace(/^0+(?=\d)/, ""));
