@@ -43,6 +43,27 @@ jobs:
             tar -xzf "$dir/decky-ui-$v.tgz" -C "$dir/$v"
           done
           printf 'DECKY_UI=%s\nDECKY_UI_LATEST=%s\n' "$ui" "$latest" >> "$GITHUB_ENV"
+      - name: Fetch finder baseline
+        # Baselines are read-only inputs; save uses a separate checkout and keeps its existing first-write behavior.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          baseline="$RUNNER_TEMP/steamui-watch/finder-baseline"
+          mkdir -p "$baseline/snapshots"
+          gh auth setup-git
+          gh repo clone "$GITHUB_REPOSITORY" "$baseline/repo" -- --depth 1 --no-checkout
+          status=0
+          git -C "$baseline/repo" ls-remote --exit-code --heads origin finder-data >/dev/null || status=$?
+          case $status in
+            0) git -C "$baseline/repo" fetch -q --depth 1 origin finder-data
+               git -C "$baseline/repo" checkout -q --detach FETCH_HEAD
+               if compgen -G "$baseline/repo/snapshots/*.json" >/dev/null; then
+                 cp "$baseline/repo"/snapshots/*.json "$baseline/snapshots/"
+               fi ;;
+            2) ;;
+            *) exit "$status" ;;
+          esac
       - name: Check Decky finders in the bundle text
         run: |
           bun install --frozen-lockfile
@@ -64,6 +85,7 @@ jobs:
           reports="$RUNNER_TEMP/steamui-watch/reports"
           ui() { echo "$RUNNER_TEMP/steamui-watch/decky-ui/$1/package"; }
           bun tools/runtime_probe.ts --decky-ui "$(ui "$DECKY_UI")" --report-dir "$reports/runtime" \
+            --baseline-dir "$RUNNER_TEMP/steamui-watch/finder-baseline/snapshots" \
             --snapshot-dir "$RUNNER_TEMP/steamui-watch/snapshots" --props-dir "$RUNNER_TEMP/steamui-watch/props"
           # Pre-upgrade check: the npm latest the fork has not locked yet. Its passes close older upgrade reports.
           upgrade="$reports/upgrade/$DECKY_UI_LATEST"
@@ -72,7 +94,8 @@ jobs:
             cp "$reports"/runtime/*.ok "$upgrade/" 2>/dev/null || true
             exit 0
           fi
-          bun tools/runtime_probe.ts --decky-ui "$(ui "$DECKY_UI_LATEST")" --report-dir "$upgrade"
+          bun tools/runtime_probe.ts --decky-ui "$(ui "$DECKY_UI_LATEST")" --report-dir "$upgrade" \
+            --baseline-dir "$RUNNER_TEMP/steamui-watch/finder-baseline/snapshots"
           for f in "$upgrade"/*.md; do
             [ -e "$f" ] || continue
             body=$(cat "$f")
@@ -188,7 +211,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           reports="$RUNNER_TEMP/steamui-watch/reports"
-          titles=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --limit 1000 --json title --jq '.[].title')
+          issues=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --limit 1000 --json number,title,state --jq '.[] | "\(.number)\t\(.title)\t\(.state)"')
           for report in "$reports"/static/*.md "$reports"/runtime/*.md "$reports"/upgrade/*/*.md "$reports"/copies/*.md "$reports"/props/*.md; do
             [ -e "$report" ] || continue
             name=$(basename "$report" .md)
@@ -200,10 +223,23 @@ jobs:
               */props/*) title="Decky extra props changed in ${name/-/ }" ;;
               *) title="Decky finders missing in ${name/-/ }" ;;
             esac
-            # One issue per check and client version; a closed issue means "checked".
-            if grep -qxF "$title" <<<"$titles"; then continue; fi
-            gh issue create --repo "$GITHUB_REPOSITORY" --assignee "$GITHUB_REPOSITORY_OWNER" \
-              --title "$title" --body-file "$report"
+            number=
+            state=
+            while IFS=$'\t' read -r existing_number existing_title existing_state; do
+              if [ "$existing_title" = "$title" ]; then
+                number=$existing_number
+                state=$existing_state
+                break
+              fi
+            done <<<"$issues"
+            if [ "$state" = open ] || [ "$state" = OPEN ]; then
+              case "$report" in
+                */runtime/*|*/upgrade/*) gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --body-file "$report" ;;
+              esac
+            elif [ -z "$number" ]; then
+              gh issue create --repo "$GITHUB_REPOSITORY" --assignee "$GITHUB_REPOSITORY_OWNER" \
+                --title "$title" --body-file "$report"
+            fi
           done
           # Close an open report when the same check passed in this run on the same branch, at the
           # same or a newer client version. A check that did not run leaves no .ok file and closes nothing.
