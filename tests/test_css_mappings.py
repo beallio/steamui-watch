@@ -123,8 +123,12 @@ class ValidateMatchesTest(unittest.TestCase):
     def test_accepts_a_match_onto_a_new_module(self):
         self.check({"2": "3"}, new=["4"])
 
+    def test_accepts_an_explicit_new_identity_for_a_reused_source_id(self):
+        self.check({"1": "3"}, new=["1", "4"])
+
     def test_rejects_unsafe_matches(self):
         for mapped, new, reason in (
+            ({"1": "3"}, [], "still exists"),
             ({"2": "1"}, [], "already existed"),  # target keeps its own history: merging crashes the pipeline
             ({"2": "3"}, ["3"], "used twice"),  # still listed as a brand-new module
             ({"2": "9"}, [], "not in version 200"),

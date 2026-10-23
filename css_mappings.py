@@ -106,6 +106,8 @@ def validate_matches(repo):
     A match must map a module of the old version onto a module that is new in the new version,
     and each new module at most once: a target that already existed has its own history, and
     merging two histories crashes the pipeline ("Chain ... already exists").
+    A source ID that is reused for a different module must also be listed as new; otherwise
+    moving its history discards the surviving module's identity.
     """
     dumps = {p.name.split(".")[0]: p for p in (repo / "webpack").glob("*.json")}
     loaded = {}
@@ -128,6 +130,8 @@ def validate_matches(repo):
             match = f"{path.name}: {module_id}->{target}"
             if module_id not in old:
                 raise SystemExit(f"{match}: module {module_id} is not in version {old_version}")
+            if module_id in new and module_id not in listed_new:
+                raise SystemExit(f"{match}: module {module_id} still exists in {new_version}; record a reused ID as new or keep its history")
             if target not in new:
                 raise SystemExit(f"{match}: module {target} is not in version {new_version}")
             if target in old:
