@@ -27,7 +27,7 @@ import extrasData from "../packages/decky-extras/extras.json";
 import { matchExtras, parseManifest } from "../packages/decky-extras/match";
 import { analyzeProps } from "./prop_surface";
 import { readSource } from "./finder_table";
-import { loadBaseline, makeRepair, rankCandidates, type Candidate } from "./finder_repair";
+import { checkRepair, loadBaseline, makeRepair, rankCandidates, type Candidate } from "./finder_repair";
 
 const extras = parseManifest(extrasData);
 
@@ -433,18 +433,19 @@ async function repairReports(runs: RepairRun[], ui: string) {
           const other = runs.find((r) => r.label === target.label)!;
           const index = other.candidates!.indexOf(target.candidate);
           try {
-            const same = await other.page.evaluate<boolean>(`(async () => {
+            const actual = await other.page.evaluate<{ same: boolean; matches: number }>(`(async () => {
               const W = await import("/probe/webpack.js");
-              return (${repair.expression}) === window.__repairObjects[${index}];
+              const checkRepair = ${checkRepair};
+              return checkRepair((W) => (${repair.expression}), W, window.__repairObjects[${index}]);
             })()`);
-            verified &&= same;
-            checks.push(`- \`${other.label}\`: ${same ? "unique catalog match; real finder returned the expected object (`===`)" : "identity check failed"} at ${target.candidate.at.map((at) => `\`${at}\``).join(", ")}.`);
+            verified &&= actual.same && actual.matches === 1;
+            checks.push(`- \`${other.label}\`: distinct real-helper match count: ${actual.matches}; ${actual.same ? "returned the expected object (`===`)" : "identity check failed"} at ${target.candidate.at.map((at) => `\`${at}\``).join(", ")}.`);
           } catch (e) { verified = false; checks.push(`- \`${other.label}\`: finder check failed: ${String(e).slice(0, 300)}.`); }
         }
         lines.push(...checks, "");
         if (verified) lines.push(repair.reason, "", "Replacement search (`W` is `@decky/ui`'s webpack helpers):", "", "```js", repair.expression, "```", "",
           "Review the selected object and test in Gaming Mode before changing the finder.", "");
-        else lines.push("No finder suggested: the runtime identity checks did not pass on both branches.", "");
+        else lines.push("No finder suggested: real-helper uniqueness and identity checks did not pass on both branches.", "");
       }
     }
     if (args["report-dir"]) {

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadBaseline, makeRepair, rankCandidates, type Candidate, type Fingerprint } from "./finder_repair";
+import { checkRepair, loadBaseline, makeRepair, rankCandidates, type Candidate, type Fingerprint } from "./finder_repair";
 
 const candidate = (source: string, at: string[], extra: Partial<Candidate> = {}): Candidate => ({
   at, source, via: "value", ...extra,
@@ -199,6 +199,46 @@ test("uses module lookup for bare module identities rather than treating modules
   expect(repair.expression).not.toContain("W.findModuleExport");
   const run = runRepair(repair.expression!, [selected, exported]);
   expect(run.result).toBe(run.runtime.get(selected));
+});
+
+test("real module search rejects a second matching default object despite a correct first result", () => {
+  const target = { TargetMarker: true }, other = { TargetMarker: true };
+  const modules = [target, { default: other }];
+  const helpers = {
+    findModule(predicate: (value: unknown) => unknown) {
+      for (const module of modules) {
+        if ("default" in module && module.default && predicate(module.default)) return module.default;
+        if (predicate(module)) return module;
+      }
+    },
+    findModuleExport() { return undefined; },
+  };
+  const find = (W: Parameters<typeof checkRepair>[1]) => W.findModule((value) => !!value && typeof value === "object" && "TargetMarker" in value);
+  expect(find(helpers)).toBe(target);
+  expect(checkRepair(find, helpers, target)).toEqual({ same: true, matches: 2 });
+});
+
+test("real module search counts aliases of the same object only once", () => {
+  const target = { TargetMarker: true };
+  const helpers = {
+    findModule(predicate: (value: unknown) => unknown) {
+      for (const value of [target, target]) if (predicate(value)) return value;
+    },
+    findModuleExport() { return undefined; },
+  };
+  const find = (W: Parameters<typeof checkRepair>[1]) => W.findModule((value) => !!value && typeof value === "object" && "TargetMarker" in value);
+  expect(checkRepair(find, helpers, target)).toEqual({ same: true, matches: 1 });
+});
+
+test("real match counting visits both helpers of an OR search", () => {
+  const target = { TargetMarker: true }, other = { TargetMarker: true };
+  const helpers = {
+    findModule(predicate: (value: unknown) => unknown) { return predicate(other) ? other : undefined; },
+    findModuleExport(predicate: (value: unknown) => unknown) { return predicate(target) ? target : undefined; },
+  };
+  const predicate = (value: unknown) => !!value && typeof value === "object" && "TargetMarker" in value;
+  const find = (W: Parameters<typeof checkRepair>[1]) => W.findModuleExport(predicate) || W.findModule(predicate);
+  expect(checkRepair(find, helpers, target)).toEqual({ same: true, matches: 2 });
 });
 
 test("matches actual render and type function sources", () => {
