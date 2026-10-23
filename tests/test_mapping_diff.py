@@ -95,6 +95,19 @@ class ChainTest(unittest.TestCase):
                 {'210': '2'},
             ])
 
+    def test_stable_and_beta_can_share_a_client_version_and_module(self):
+        with tempfile.TemporaryDirectory(dir=TEMP) as directory:
+            root = Path(directory)
+            (root / 'webpack').mkdir()
+            (root / 'webpack-mappings').mkdir()
+            for version, value in [('100.stable', 'old'), ('100.beta', 'old'),
+                                   ('200.stable', 'new'), ('200.beta', 'new')]:
+                (root / 'webpack' / f'{version}.json').write_text(json.dumps({'1': {'Panel': value}}))
+            subprocess.run([sys.executable, str(ROOT / 'webpack_id_mappings.py')], cwd=root,
+                           check=True, capture_output=True, text=True)
+            chains = json.loads((root / 'webpack_id_mappings.json').read_text())
+            self.assertEqual(list(chains.values()), [{'100': '1', '200': '1'}])
+
 
 if __name__ == '__main__':
     unittest.main()

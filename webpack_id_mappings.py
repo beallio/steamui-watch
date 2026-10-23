@@ -116,8 +116,8 @@ class Chain:
         self.add(starting_version, starting_module_id, is_starting_beta)
     
     def add(self, version : str, module_id : str, is_beta : bool):
-        if version in self.chain:
-            raise Exception(f"Chain {self.id} already contains a module for version {version}")
+        if version in self.chain and self.chain[version] != module_id:
+            raise Exception(f"Chain {self.id} already contains a different module for version {version}")
         self.chain[version] = module_id
 
         id = get_module_id(version, module_id, is_beta)
