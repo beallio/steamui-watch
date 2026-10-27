@@ -1,0 +1,438 @@
+{
+  "schema": 1,
+  "branch": "beta",
+  "version": "1793056502",
+  "revision": 1,
+  "components": {
+    "BottomButtons": {
+      "at": [
+        "50777:X8"
+      ],
+      "props": [
+        "alignItems",
+        "children",
+        "navRef",
+        "topPadding"
+      ],
+      "notes": []
+    },
+    "CalloutMessage": {
+      "at": [
+        "5657:kg"
+      ],
+      "props": [
+        "children",
+        "className"
+      ],
+      "notes": []
+    },
+    "DialogHBar": {
+      "at": [
+        "50777:_E",
+        "76982:_E"
+      ],
+      "props": [
+        "className"
+      ],
+      "notes": [
+        "props forwarded to native div; native attributes are not enumerated"
+      ]
+    },
+    "DialogRoundCheckboxField": {
+      "at": [
+        "50777:Od",
+        "76982:Od"
+      ],
+      "props": [
+        "bottomSeparator",
+        "checked",
+        "className",
+        "color",
+        "controlled",
+        "description",
+        "disabled",
+        "highlightColor",
+        "label",
+        "onChange",
+        "tabIndex",
+        "tooltip"
+      ],
+      "notes": [
+        "props copied into object in module 76982",
+        "unresolved base class in module 76982: missing export 63696:Component",
+        "unresolved spread in rendered props in module 76982"
+      ]
+    },
+    "DialogSettingsSection": {
+      "at": [
+        "50777:XY",
+        "76982:XY"
+      ],
+      "props": [
+        "children",
+        "className",
+        "label",
+        "labelId"
+      ],
+      "notes": [
+        "unsupported component wrapper Ri in module 76982"
+      ]
+    },
+    "DiscreteSlider": {
+      "at": [
+        "50777:gz"
+      ],
+      "props": [
+        "aria-label",
+        "aria-labelledby",
+        "bottomSeparator",
+        "childrenContainerWidth",
+        "clampMax",
+        "clampMin",
+        "className",
+        "description",
+        "disabled",
+        "dpadStep",
+        "editableValue",
+        "explainer",
+        "explainerTitle",
+        "extraNotchPadding",
+        "focusable",
+        "handleType",
+        "highlightOnFocus",
+        "icon",
+        "iconLocation",
+        "indentLevel",
+        "innerRef",
+        "isKeyNavTarget",
+        "label",
+        "layout",
+        "max",
+        "min",
+        "navRef",
+        "notchCount",
+        "notchLabels",
+        "notchTicksVisible",
+        "onActivate",
+        "onChange",
+        "onChangeComplete",
+        "onChangeStart",
+        "onOptionsActionDescription",
+        "onOptionsButton",
+        "padding",
+        "parentSliderRef",
+        "rValues",
+        "renderNotch",
+        "renderValue",
+        "resetValue",
+        "resetValueAppearance",
+        "resetValueSecondaryButtonDisabled",
+        "showBookendLabels",
+        "showHandle",
+        "showValue",
+        "step",
+        "stepSound",
+        "strValueSuffix",
+        "tabIndex",
+        "tooltip",
+        "trackForegroundVisible",
+        "trackStyleBackground",
+        "trackStyleOverride",
+        "trackTone",
+        "transparentBackground",
+        "validValues",
+        "value",
+        "valueSuffix"
+      ],
+      "notes": [
+        "props passed to helper Wr in module 50777",
+        "unresolved base class in module 50777: missing export 63696:Component",
+        "unresolved spread in rendered props in module 50777",
+        "unsupported component wrapper HR in module 44727"
+      ]
+    },
+    "FieldDescription": {
+      "at": [
+        "23477:ry",
+        "50777:ry"
+      ],
+      "props": [
+        "accessibilityId",
+        "children",
+        "className"
+      ],
+      "notes": []
+    },
+    "FieldSeparator": {
+      "at": [
+        "23477:Nu",
+        "50777:Nu"
+      ],
+      "props": [
+        "className"
+      ],
+      "notes": []
+    },
+    "LabelValueField": {
+      "at": [
+        "23477:Nv",
+        "50777:Nv"
+      ],
+      "props": [
+        "accessibilityId",
+        "bottomSeparator",
+        "children",
+        "childrenContainerWidth",
+        "childrenLayout",
+        "className",
+        "description",
+        "disabled",
+        "explainer",
+        "explainerTitle",
+        "focusable",
+        "highlightOnFocus",
+        "icon",
+        "iconLocation",
+        "indentLevel",
+        "inlineWrap",
+        "label",
+        "layout",
+        "navRef",
+        "onActivate",
+        "onClick",
+        "padding",
+        "spacingBetweenLabelAndChild",
+        "tooltip",
+        "transparentBackground",
+        "verticalAlignment"
+      ],
+      "notes": [
+        "dynamic prop key may override forwarded props in module 23477",
+        "props passed to helper sl in module 38850",
+        "unresolved spread in rendered props in module 23477",
+        "unresolved spread in rendered props in module 38850"
+      ]
+    },
+    "LoadingThrobber": {
+      "at": [
+        "5360:k"
+      ],
+      "props": [
+        "color",
+        "size",
+        "trackColor"
+      ],
+      "notes": []
+    },
+    "PasswordInput": {
+      "at": [
+        "50777:yA"
+      ],
+      "props": [
+        "bAlwaysShowClearAction",
+        "bShowClearAction",
+        "bShowCopyAction",
+        "className",
+        "description",
+        "fnStrValidateURL",
+        "focusOnMount",
+        "inlineControls",
+        "label",
+        "maxChars",
+        "mustBeEmail",
+        "mustBeNumeric",
+        "mustBeURL",
+        "onChange",
+        "rangeMax",
+        "rangeMin",
+        "requiredLabel",
+        "size",
+        "tooltip",
+        "value"
+      ],
+      "notes": [
+        "props passed to helper CheckProps in module 50777",
+        "unresolved base class in module 50777: missing export 63696:PureComponent",
+        "unsupported component wrapper v0 in module 44727"
+      ]
+    },
+    "PinInput": {
+      "at": [
+        "50777:QJ"
+      ],
+      "props": [
+        "autoFocus",
+        "className",
+        "digitClassName",
+        "digits",
+        "onChange",
+        "type",
+        "validateDigit",
+        "value"
+      ],
+      "notes": []
+    },
+    "RadioButton": {
+      "at": [
+        "50777:a"
+      ],
+      "props": [
+        "children",
+        "role",
+        "value"
+      ],
+      "notes": [
+        "unsupported component wrapper HR in module 44727"
+      ]
+    },
+    "RadioGroup": {
+      "at": [
+        "50777:zW"
+      ],
+      "props": [
+        "centeredPillStyle",
+        "children",
+        "classNames",
+        "descriptionId",
+        "disabled",
+        "flow-children",
+        "focusClassName",
+        "focusWithinClassName",
+        "labelId",
+        "onActivate",
+        "onCancel",
+        "onChange",
+        "ref",
+        "role",
+        "value"
+      ],
+      "notes": [
+        "props passed to helper sl in module 38850",
+        "unresolved spread in rendered props in module 38850"
+      ]
+    },
+    "SectionHeader": {
+      "at": [
+        "10909:w"
+      ],
+      "props": [
+        "as",
+        "className",
+        "label",
+        "level",
+        "noLeftPadding",
+        "renderContextMenu",
+        "showRule",
+        "tooltip"
+      ],
+      "notes": [
+        "unsupported component value LogicalExpression in module 12604"
+      ]
+    },
+    "SegmentedCharacterInput": {
+      "at": [
+        "40532:a"
+      ],
+      "props": [
+        "allowCharacter",
+        "autoFocus",
+        "backupCode",
+        "disabled",
+        "length",
+        "loading",
+        "onChange",
+        "onPaste",
+        "tone",
+        "value"
+      ],
+      "notes": []
+    },
+    "StackedConfirmButtons": {
+      "at": [
+        "50777:xv",
+        "76982:xv"
+      ],
+      "props": [
+        "bDisableSecondary",
+        "className",
+        "classNamePrimary",
+        "onCancel",
+        "onPrimary",
+        "onSecondary",
+        "strCancelButtonText",
+        "strPrimaryButtonText",
+        "strSecondaryButtonText"
+      ],
+      "notes": []
+    },
+    "TextArea": {
+      "at": [
+        "50777:Cl"
+      ],
+      "props": [
+        "nMaxHeight",
+        "nMinHeight",
+        "onBlur",
+        "onClick",
+        "onCut",
+        "onKeyUp",
+        "onPaste"
+      ],
+      "notes": [
+        "unresolved base class in module 50777: missing export 63696:Component",
+        "unsupported component wrapper v0 in module 44727"
+      ]
+    },
+    "TextButton": {
+      "at": [
+        "50777:QW",
+        "76982:QW"
+      ],
+      "props": [
+        "children",
+        "className",
+        "disabled",
+        "onClick",
+        "onMouseDown",
+        "onMouseUp",
+        "onPointerCancel",
+        "onPointerDown",
+        "onPointerUp",
+        "onSubmit",
+        "onTouchCancel",
+        "onTouchEnd",
+        "onTouchStart",
+        "svgicon"
+      ],
+      "notes": [
+        "unsupported component wrapper HR in module 44727"
+      ]
+    },
+    "ToggleRow": {
+      "at": [
+        "50777:P8",
+        "56785:P8"
+      ],
+      "props": [
+        "className",
+        "disabled",
+        "label",
+        "onChange",
+        "value"
+      ],
+      "notes": []
+    },
+    "WarningBox": {
+      "at": [
+        "52123:y"
+      ],
+      "props": [
+        "body",
+        "heading",
+        "rightColumn",
+        "type"
+      ],
+      "notes": []
+    }
+  }
+}
