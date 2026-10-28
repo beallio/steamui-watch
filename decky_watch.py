@@ -20,7 +20,7 @@ from typing import NamedTuple
 
 from css_mappings import BRANCHES, download_sources, extract_class_modules, fetch_manifest
 
-LOADER = "decky-loader 36c0733"
+LOADER = "decky-loader dcecc3b7a9c89e0fa1c122653ed7f8a9dd59fca0"
 
 type Text = str | re.Pattern[str]
 
