@@ -77,6 +77,9 @@ class PipelineOutputTest(unittest.TestCase):
                     (repo / script).touch()
                 for suffix in css_mappings.BRANCHES.values():
                     (repo / "webpack" / f"100.{suffix}.json").write_text("{}")
+                (repo / "webpack-literals").mkdir()
+                for suffix in css_mappings.BRANCHES.values():
+                    (repo / "webpack-literals" / f"100.{suffix}.json").write_text("[]")
                 generator = "from pathlib import Path\n"
                 for name, payload in outputs.items():
                     content = payload if isinstance(payload, str) else json.dumps(payload)
@@ -89,6 +92,9 @@ class PipelineOutputTest(unittest.TestCase):
                     css_mappings.main([str(repo)])
 
     def test_no_pipeline_writes_the_dump_without_requiring_final_outputs(self):
+        bundle = {"sp.js": '1:(e=>{e.exports={Button:"_hashed"}})',
+                  "sp.css": "/* .Commented{} */ ._hashed.Launch:not(.Off){color:red;background:url(a.png)}"
+                            "@media (max-width: 1.5em){.SliderTrack{height:4px}}"}
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             (repo / "webpack").mkdir()
@@ -96,14 +102,33 @@ class PipelineOutputTest(unittest.TestCase):
                 (repo / script).touch()
             with (
                 mock.patch.object(css_mappings, "fetch_manifest", return_value=("100", {})),
-                mock.patch.object(css_mappings, "download_sources", return_value=['1:(e=>{e.exports={Button:"old"}})']),
+                mock.patch.object(css_mappings, "download_bundle", return_value=bundle),
                 mock.patch.object(css_mappings, "MIN_MODULES", 1),
             ):
                 self.assertEqual(css_mappings.main([str(repo), "--branch", "stable", "--no-pipeline"]), 0)
             self.assertEqual(
                 json.loads((repo / "webpack" / "100.stable.json").read_text()),
-                {"1": {"Button": "old"}},
+                {"1": {"Button": "_hashed"}},
             )
+            self.assertEqual(json.loads((repo / "webpack-literals" / "100.stable.json").read_text()),
+                             ["Launch", "Off", "SliderTrack"])
+
+    def test_retained_dump_gets_its_literal_list_without_being_rewritten(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "webpack").mkdir()
+            for script in css_mappings.PIPELINE:
+                (repo / script).touch()
+            retained = '{"1": {"Button": "_retained"}}'
+            (repo / "webpack" / "100.stable.json").write_text(retained)
+            bundle = {"sp.js": '1:(e=>{e.exports={Button:"_other"}})', "sp.css": "._retained.Launch{}"}
+            with (
+                mock.patch.object(css_mappings, "fetch_manifest", return_value=("100", {})),
+                mock.patch.object(css_mappings, "download_bundle", return_value=bundle),
+            ):
+                self.assertEqual(css_mappings.main([str(repo), "--branch", "stable", "--no-pipeline"]), 0)
+            self.assertEqual((repo / "webpack" / "100.stable.json").read_text(), retained)
+            self.assertEqual(json.loads((repo / "webpack-literals" / "100.stable.json").read_text()), ["Launch"])
 
 class ValidateMatchesTest(unittest.TestCase):
     """Old 1 and 2 exist in version 100; 1 survives into 200, and 3 and 4 are new there."""

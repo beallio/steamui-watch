@@ -176,7 +176,12 @@ After Pages deploys, the workflow creates a `decky-extras-v<version>` GitHub rel
 
 ## Publishing and retained history
 
-[Publish CSS mappings](.github/workflows/publish-mappings.yml) runs every 6 hours, on relevant pushes to `main`, and by manual dispatch. It clones `mapping-data`, generates both lists, saves new `webpack/` and `webpack-mappings/` inputs back to that branch, then deploys both JSON files together through GitHub Pages. A generation or deployment failure leaves the previous site available.
+[Publish CSS mappings](.github/workflows/publish-mappings.yml) runs every 6 hours, on relevant pushes to `main`, and by manual dispatch. It clones `mapping-data`, generates both lists, saves new `webpack/`, `webpack-mappings/` and `webpack-literals/` inputs back to that branch, then deploys both JSON files together through GitHub Pages. A generation or deployment failure leaves the previous site available.
+
+Two local rules in `mapping-data`'s `backport_classname_mappings.py` differ from upstream:
+
+- Each list ends on the class in that branch's own dump. A beta build can have a lower number than the current stable build without being part of it, so number order alone can give stable users a beta-only class.
+- `webpack-literals/<version>.<branch>.json` lists the class names that Steam's own CSS uses as written (for example `SVGIcon_DialogCheck` or the context-menu action `Launch`). These names are removed from that branch's aliases, so CSS Loader leaves them unchanged instead of moving a theme's rule onto an unrelated module class. `css_mappings.py` writes the list with each dump, and adds it once for a retained dump that has none.
 
 Do not recreate `mapping-data` from upstream or merge it into `main`. Its history preserves classes introduced by intermediate releases and reviewed mapping corrections. Keep the output format and stable/beta selection unchanged for CSS Loader consumers.
 
