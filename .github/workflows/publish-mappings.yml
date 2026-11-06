@@ -51,7 +51,7 @@ jobs:
           uv run --locked --no-dev python css_mappings.py "$TMPDIR/mappings"
           git -C "$TMPDIR/mappings" config user.name 'github-actions[bot]'
           git -C "$TMPDIR/mappings" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git -C "$TMPDIR/mappings" add webpack webpack-mappings
+          git -C "$TMPDIR/mappings" add webpack webpack-mappings webpack-literals
           if ! git -C "$TMPDIR/mappings" diff --cached --quiet; then
             git -C "$TMPDIR/mappings" commit -m 'chore(mappings): retain Steam Deck class history'
             git -C "$TMPDIR/mappings" push origin HEAD:mapping-data

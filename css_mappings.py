@@ -1,7 +1,8 @@
 """Dump Steam Deck UI CSS class modules into a mappings checkout and build the CSS Loader lists.
 
 Reads Valve's Steam Deck client manifests, downloads the matching steamui bundle,
-writes webpack/<version>.<stable|beta>.json and runs the upstream mapping scripts.
+writes webpack/<version>.<stable|beta>.json and webpack-literals/<version>.<stable|beta>.json
+(class names Steam's own CSS uses as written) and runs the upstream mapping scripts.
 """
 
 import argparse
@@ -32,6 +33,9 @@ _MODULE = re.compile(
 _ENTRY_RE = re.compile(_ENTRY)
 _ESCAPE = re.compile(r"\\(?:x([0-9a-fA-F]{2})|u\{([0-9a-fA-F]+)\}|u([0-9a-fA-F]{4})|(.))", re.S)
 _SIMPLE_ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "b": "\b", "f": "\f", "v": "\v", "0": "\0", "\n": ""}
+_CSS_COMMENT = re.compile(r"/\*.*?\*/", re.S)
+_CSS_PRELUDE = re.compile(r"([^{}]+)\{")
+_CSS_CLASS = re.compile(r"\.(-?[_a-zA-Z][\w-]*)")
 
 
 def _js_string(literal):
@@ -62,6 +66,18 @@ def extract_class_modules(sources):
     return modules
 
 
+def literal_classes(css_sources, modules):
+    """Return the class names Steam's CSS selectors use as written, not through an exported module class."""
+    exported = {value for module in modules.values() for value in module.values()}
+    used = {
+        name
+        for src in css_sources
+        for prelude in _CSS_PRELUDE.findall(_CSS_COMMENT.sub("", src))
+        for name in _CSS_CLASS.findall(prelude)
+    }
+    return sorted(used - exported)
+
+
 def _get(url):
     request = urllib.request.Request(url, headers={"User-Agent": "steamui-watch"})
     with urllib.request.urlopen(request, timeout=300) as response:
@@ -81,12 +97,17 @@ def fetch_manifest(branch):
     return version.group(1), fields
 
 
-def download_sources(fields):
+def download_bundle(fields):
+    """Return {file name: text} for the JS and CSS files of the verified steamui bundle."""
     data = _get(f"{CDN}/{fields['file']}")
     if hashlib.sha256(data).hexdigest() != fields["sha2"].lower():
         raise SystemExit(f"{fields['file']}: SHA-256 does not match the manifest")
     with zipfile.ZipFile(io.BytesIO(data)) as bundle:
-        return [bundle.read(n).decode("utf-8", "replace") for n in bundle.namelist() if n.endswith(".js")]
+        return {n: bundle.read(n).decode("utf-8", "replace") for n in bundle.namelist() if n.endswith((".js", ".css"))}
+
+
+def download_sources(fields):
+    return [text for name, text in download_bundle(fields).items() if name.endswith(".js")]
 
 def _validate_mapping_output(path):
     try:
@@ -152,20 +173,31 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     webpack_dir = args.mappings_repo / "webpack"
+    literals_dir = args.mappings_repo / "webpack-literals"
     if not webpack_dir.is_dir() or not all((args.mappings_repo / s).is_file() for s in PIPELINE):
         parser.error(f"{args.mappings_repo} is not a CSSLoader-Mappings checkout")
 
     for branch in args.branch or BRANCHES:
         version, fields = fetch_manifest(branch)
-        target = webpack_dir / f"{version}.{BRANCHES[branch]}.json"
-        if target.exists() and not args.force:
-            print(f"{branch}: {target.name} exists, skipping")
+        name = f"{version}.{BRANCHES[branch]}.json"
+        target, literals = webpack_dir / name, literals_dir / name
+        if target.exists() and literals.exists() and not args.force:
+            print(f"{branch}: {name} exists, skipping")
             continue
-        modules = extract_class_modules(download_sources(fields))
-        if len(modules) < MIN_MODULES:
-            raise SystemExit(f"{branch}: only {len(modules)} class modules found; parser needs an update")
-        target.write_text(json.dumps(modules), encoding="utf-8")
-        print(f"{branch}: wrote {target.name} ({len(modules)} class modules)")
+        files = download_bundle(fields)
+        if target.exists() and not args.force:
+            # Keep the retained dump; add only the literal list that it predates.
+            modules = json.loads(target.read_text(encoding="utf-8"))
+        else:
+            modules = extract_class_modules([text for n, text in files.items() if n.endswith(".js")])
+            if len(modules) < MIN_MODULES:
+                raise SystemExit(f"{branch}: only {len(modules)} class modules found; parser needs an update")
+            target.write_text(json.dumps(modules), encoding="utf-8")
+            print(f"{branch}: wrote {target.name} ({len(modules)} class modules)")
+        plain = literal_classes([text for n, text in files.items() if n.endswith(".css")], modules)
+        literals_dir.mkdir(exist_ok=True)
+        literals.write_text(json.dumps(plain), encoding="utf-8")
+        print(f"{branch}: wrote webpack-literals/{name} ({len(plain)} plain class names)")
 
     # Run even when every dump existed: a failed or --no-pipeline earlier run must still be retryable.
     if not args.no_pipeline:

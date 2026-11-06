@@ -160,6 +160,8 @@ class HistoryPersistenceTest(WorkflowTest):
                 previous = sorted(p.stem.split(".")[0] for p in (repo / "webpack").glob("*.json"))[-1]
                 dump.write_text("{}")
                 (repo / "webpack-mappings" / f"{previous}to{release}.json").write_text("{}")
+                (repo / "webpack-literals").mkdir(exist_ok=True)
+                (repo / "webpack-literals" / f"{release}.stable.json").write_text("[]")
             history = sorted(p.stem for p in (repo / "webpack").glob("*.json"))
             for branch in ("stable", "beta"):
                 (repo / f"{branch}.json").write_text(json.dumps({"id": history}))
@@ -186,7 +188,8 @@ class HistoryPersistenceTest(WorkflowTest):
         self.assertEqual(json.loads((site / "beta.json").read_text()), {"id": ["100.stable", "200.stable", "300.stable"]})
         self.assertEqual((site / "LICENSE.txt").read_text(), "MIT")
         self.assertTrue({"webpack/200.stable.json", "webpack/300.stable.json", "webpack-mappings/100to200.json",
-                         "webpack-mappings/200to300.json"} <= set(self.remote_files()))
+                         "webpack-mappings/200to300.json", "webpack-literals/200.stable.json",
+                         "webpack-literals/300.stable.json"} <= set(self.remote_files()))
 
     def test_rerun_without_a_new_release_makes_no_commit(self):
         self.publish("200")
