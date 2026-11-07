@@ -1,0 +1,27 @@
+--- webpack/1793919658.beta.json
++++ webpack/1794022194.beta.json
+@@ -4261,6 +4261,7 @@
+     "BatteryIconHeaderItem": "_3JqtKbMMVfIsSl0FzOn4u7",
+     "Bookend": "_3UAjlb6zGPDw2psJtioQsO",
+     "BottomFade": "_3sM_s3TkfTzNPMnsFDwj-Q",
++    "Checked": "_3Ojvg5enPULsnITebWctc5",
+     "ClickAnimation": "_1yDRGxFyzhNl8Y7XBCsikk",
+     "ClickPop": "_2ed6-G1fdOEZ6yFvVmDnu4",
+     "Clickable": "bMtzoBRiT4I2mYF1RWsZO",
+@@ -4268,6 +4269,7 @@
+     "DashboardBar": "_3nkwN7FnNLLppYbvNVJToy",
+     "DashboardBarPopupContents": "_21TZj5TnUXxOipD_ZTcpz3",
+     "DashboardBarPopupList": "_2xVtDWBtxjXhRXcMm7qF0G",
++    "DashboardBarPopupListFooter": "_3Yy4MHW94IqWN98fazm6nq",
+     "DashboardBarPopupListHeader": "_1Zpnn9b-yDDnCE_WTFix8D",
+     "DashboardBarPopupListItem": "_1LhEM4wJhwjPD6sePMrpbb",
+     "DashboardBarPopupListScrollPanel": "_2FZi2PFMct-Obx3FIwu0nM",
+@@ -4291,6 +4293,7 @@
+     "Icons": "_1dVWPYPlBYF0LIyQ8exzFx",
+     "Inner": "_1B9Kfc0uR6Y8CNJD5LkNw_",
+     "Item": "XlWw9erk4MU5NVejdrd_7",
++    "ListItemCheckbox": "_3clg57MLQ4qFstwurebPfi",
+     "MenuVisible": "_2VMPXXql5oP3XDeGTVd9Lk",
+     "OldColors": "_10T8CpSywdDdC8yCUPg8fm",
+     "OverlayIcon": "_3STB62k0qbDhSTiHCBksrL",
+
