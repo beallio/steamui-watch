@@ -1,0 +1,108 @@
+--- webpack/1794079253.beta.json
++++ webpack/1794266161.beta.json
+@@ -2291,7 +2291,6 @@
+     "DeckVerifiedFeedbackDetailsCtn": "_2ht8eu7BDFv3iWo1wzBlnc",
+     "DeckVerifiedFeedbackQuestion": "r0XD8O3skurvTEXlfd785",
+     "Deemphasize": "_1ualxcnLZiGZ-76NKItYyk",
+-    "GameFrameRateReportingHowToChange": "riys10287oEwHrU6iOvFz",
+     "GameFrameRateReportingTitle": "_3Z39smzWXIq1GCE5LBW_Tk",
+     "GameInfoCollections": "_32SD3UPT95_ZL7tqOsf080",
+     "GameInfoContainer": "pzBMdSbGpu7XfypZMU6PK",
+@@ -7884,15 +7883,16 @@
+     "BannerContentDesktop": "Cek1s5Ixk2xYmkqjjESD0",
+     "BannerHeader": "_3yxJH3baj7mwTTYzBIyi_Z",
+     "CategoryIcon": "_3qF711tcWJEMKEv_r_S2tz",
++    "CompatReportDialogBody": "_3qLtGkch9FuPc9azIltBRt",
+     "CompatabilityDetailsNoteContainer": "_6_vookxUbQB-_K6ZSHoOs",
+     "CompatibilityDetailRatingDescription": "_3456EX4aC94XtIz6d_Qhsl",
+     "CompatibilityDetailRatingSummary": "mJGYScROtrnXBuQ-LU507",
+     "CompatibilityDetailsContainer": "_1-O8t3AxzpNsipTPfHVktW",
+-    "CompatibilityDetailsInterior_NoScroll": "_3oQPVwTgG0CmSxwl3e1cI4",
+-    "CompatibilityDetailsInterior_Scroll": "_2uCLczcyA7K90OppYPMeBA",
+     "CompatibilityDetailsNoteRow": "_1Wu_jj1kk9n3WIoga3RL_J",
+     "CompatibilityDetailsResultIcon": "-L3Xub7NtXchyErJuHnKk",
+     "CompatibilityDetailsRow": "_32fPpbyivR63XHk0qiRv5n",
++    "CompatibilityDetailsScroll": "_1Lr7DXWKD_uN7PaE8U1qo1",
++    "CompatibilityDetailsScrollContent": "_26BT4COvbKsjGyni-i3veI",
+     "CompatibilityDetailsSeparator": "_2mwbdnqm9Lk1-Bzs8FIdCU",
+     "CompatibilityDetailsStillLearning": "_1WWwtz2-hqx1OnhlEOCTLl",
+     "CompatibilityNotes": "_1aoamIeDfCjdgyuxLvC71m",
+@@ -7908,16 +7908,25 @@
+     "DialogHeader": "ZEuE1Cb-TDw4-XHl51qc4",
+     "DialogTitle": "_2WJTd3a8tzPCkIBmvfBD79",
+     "Divider": "_1ikdMiUUJQCzu5m-OgP8az",
++    "FrameRateDetailsSeparator": "_1QsTJEJDkP7BMwXD_fqVFA",
++    "FramerateTabs": "cFpoydZeap3XrfLo3ef2O",
+     "GamePerformance": "_5LMNcPZPMKt07G9Atmv_d",
++    "GamePerformanceLastUpdated": "_1hh2CwOav19PBwQBtRg2Q-",
++    "GamePerformanceSummary": "_1A4nGdaj6zwBL-kLmAuMK2",
++    "GamePerformanceSummaryRow": "_21HEw91Ex24Tv5M6nbqy5c",
+     "GamePerformanceValue": "rRMEH3oJvrQFGd520RdY0",
+     "LearnMore": "_2gXzKgnqPNSUzBWEYvQ4OP",
+     "LearnMoreCtn": "_2IcEuX6gnbktAOaz9t0dTB",
+     "LearnMorePC": "CrSPfZhq2070MqXIkkryS",
++    "MoreInfoBody": "_12ygSYdEUuRnstjlBrbHzG",
++    "MoreInfoCaret": "_38dt1RGdPyDg27Rpa3ou6z",
++    "MoreInfoContainer": "_2v696E3H0_C_Nwl2j63Ors",
+     "Playable": "_1n8vatQzJB_Xptbs8lnm9n",
+     "RatingIcon": "JpPKQ9u62K6FUa-N8VbN8",
+     "SteamDeckDeviceIcon": "_3IOFFIoATruXDCEVO_7Jqd",
+     "SteamFrameDeviceIcon": "_34S3mEk7xRyS1Lnlnkd0hu",
+     "SteamMachineDeviceIcon": "_1nTDsg_9olpJdf7qqVpGfL",
++    "Title": "_3kfKfB-pGu8SzCuHslLD42",
+     "Unsupported": "_2Q0ld2nJ3334gwZJ4LVzPW",
+     "Verified": "ewmg-iZH8r2ghippaDEbq",
+     "duration-app-launch": "800ms",
+@@ -10495,6 +10504,26 @@
+     "BreakTall": "1200px",
+     "BreakUltraWide": "2100px",
+     "BreakWide": "1774px",
++    "Button": "_3Hl9CmBQ_z_kwNChjoX_3X",
++    "Buttons": "D94L8oSsJf2NM5kl2aZh4",
++    "Confirmation": "_1zb2MrzgdBlkpvIFIjM_t",
++    "FramerateReportingBanner": "v66w8s0IBeRURM9hD5nAw",
++    "GamepadUIBreakNarrow": "853px",
++    "GamepadUIBreakShort": "500px",
++    "GamepadUIBreakWide": "1280px",
++    "Question": "_2d9pc_ziCjBFV-KGQ-nsCh",
++    "RightBreakNarrow": "884px",
++    "RightBreakUltraNarrow": "600px",
++    "RightBreakUltraWide": "1826px",
++    "RightBreakWide": "1500px",
++    "Title": "_2T8UwmbZ9jJzntqjQU4czU"
++  },
++  {
++    "BreakNarrow": "1158px",
++    "BreakShort": "600px",
++    "BreakTall": "1200px",
++    "BreakUltraWide": "2100px",
++    "BreakWide": "1774px",
+     "Button": "_3Tfp8-wTAttW3WVa_X9JVC",
+     "Disk": "_1QHr4A7EN2DgQfJIdu3rTh",
+     "DiskGraph": "_2-AUyaXfJHWP85tZVENytR",
+@@ -11634,6 +11663,12 @@
+     "FriendToolbarLabel": "_2J-EG8DWM0ZvA4dCFynzio"
+   },
+   {
++    "ChartTooltipContent": "_1k2PEPzpqWHCourh-nuAuP",
++    "ChartYAxisLabel": "_1B0uo6uwXmD3OWO1kTeQ0S",
++    "HistogramChartContainer": "B6RsrH8xoriB-HdZKCO0_",
++    "NoData": "_2bX9QrXyNS0IOiH7Wsfs_e"
++  },
++  {
+     "ChatModalCover": "_3EwDM8E1LYILno1QNM0IAv",
+     "InviteDropBackground": "SDywUraoIhkLlnkW8IUyI",
+     "InviteDropContainer": "_3zWGwYIQs01hkEl3N2sICI",
+@@ -12465,6 +12500,11 @@
+   {
+     "DemoButton": "_28CiBI8NLjLb6f6rlg_Ymg",
+     "DisabledButton": "_2vOGUa8HwoudpQtMOK5Nqw"
++  },
++  {
++    "Description": "D2l4_sWFC_kkULZRV9xbD",
++    "HowToChange": "soab1lEt89s3fbWJCs-hE",
++    "SettingsLink": "_23RARDE01pZtYMsu4MCtQv"
+   },
+   {
+     "Description": "_2OydCuCPpDtX9LszPJjZwn",
+
