@@ -60934,5 +60934,297 @@
     "xbe197bk_GamepadMultiButtonContents": [
         "_xbe197bk_GamepadMultiButtonContents",
         "_1JBubWrLiScJfb-kymrnM1"
+    ],
+    "24798cae-0b2b-5734-b816-ef8f703494e2": [
+        "_PNTz6Jpi_BasicHomeUpdates",
+        "RT6AHaCqAMuUxGPiv_iUj"
+    ],
+    "75edb99c-2168-5645-9343-cb73d18aa7f1": [
+        "_PNTz6Jpi_Darkener",
+        "_39dnQ8IrGR0HrxkuazLJEn"
+    ],
+    "4b0b71ad-9769-5473-87fc-c7e4750fdb3b": [
+        "_PNTz6Jpi_EventCarousel",
+        "_1eaj3-SfGTYe_mk2OhqeuD"
+    ],
+    "8c4ccc6e-5d07-59d4-acd0-efac4f0243b1": [
+        "_PNTz6Jpi_EventImage",
+        "_1qs9CcewwnXGMe4DBvKYY_"
+    ],
+    "13ce4f24-7243-5b85-929e-1e0bc2bac685": [
+        "_PNTz6Jpi_EventImageWrapper",
+        "_3Yd9bnm5cESPzqV_j5-WJt"
+    ],
+    "41c91464-b534-56a3-871a-d19564f382e8": [
+        "_PNTz6Jpi_EventInfo",
+        "_3FDPeEvssr8wktS3dWB-RO"
+    ],
+    "77d44971-c30f-5281-b73a-569ef90d5205": [
+        "_PNTz6Jpi_EventPreviewContainer",
+        "B1DxY2t9t_oR_fXgqs7Dj"
+    ],
+    "bb26064e-67e9-5567-93ad-31e89c231044": [
+        "_PNTz6Jpi_EventSummary",
+        "_207nc4Kas-7zR1DpqbnMqA"
+    ],
+    "8ac48ab9-9d84-574e-9d75-747b597c66d6": [
+        "_PNTz6Jpi_EventTime",
+        "_1xu4iu0Qa3cGcIr-rZAsVb"
+    ],
+    "d7bf62d2-ffc7-58e6-9744-ecec8987dd32": [
+        "_PNTz6Jpi_EventType",
+        "_1CHMXiWOqnIysQxRkfNncU"
+    ],
+    "75b5c717-1e6c-5b32-a642-240f8cd44b58": [
+        "_PNTz6Jpi_EventType10",
+        "_1ojisp652alyE1_QPbb7t3"
+    ],
+    "bba1e224-b6b9-5428-970d-7989e61af2c6": [
+        "_PNTz6Jpi_EventType11",
+        "_2sLzTPnpdniw73JXezyJH2"
+    ],
+    "a0dfc572-02ae-5ab3-a782-6e484e474314": [
+        "_PNTz6Jpi_EventType13",
+        "_1PWPAOvQSOcqgBUOK6Qjuf"
+    ],
+    "55ef5ddd-970c-574b-bdcd-455bc91ae64a": [
+        "_PNTz6Jpi_EventType14",
+        "_1OGNpjV4uWuyEfixDUcDa9"
+    ],
+    "640cf7be-e244-5e05-8ea9-84e46fc1bb7e": [
+        "_PNTz6Jpi_EventType15",
+        "bOoe-_rU7t3I14HXKMBMs"
+    ],
+    "76139433-48c3-5865-ba17-e46a8d6bef7e": [
+        "_PNTz6Jpi_EventType23",
+        "_1EJGZLpjcpUub7dfCHCZUp"
+    ],
+    "cd1f6b9a-3fa5-5df4-b03a-2c7b6d713fde": [
+        "_PNTz6Jpi_EventType28",
+        "_3a8OV6RnNIFEP1qrjio_QS"
+    ],
+    "f8704d82-c27c-514d-8423-032cd9f1033a": [
+        "_PNTz6Jpi_EventType35",
+        "_1v4rE5A_gYI_XUSlR_IlQU"
+    ],
+    "0782cea4-2b88-5f8b-972e-a9d22bc83180": [
+        "_PNTz6Jpi_GameIcon",
+        "_3NhMi9WuJr2JESTWRp44zh"
+    ],
+    "56b8ab20-0ca6-545f-8f65-a87d96b5e29d": [
+        "_PNTz6Jpi_GameIconAndName",
+        "_2hemZcvJgBSV9YvlToW1Zv"
+    ],
+    "916ca75b-3294-5301-b782-9ed25b01bfb1": [
+        "_PNTz6Jpi_GameName",
+        "_11NNMU7s1rEnvE2bfegIiX"
+    ],
+    "c7fb4c23-4492-5352-ac21-b4e02652b2a7": [
+        "_PNTz6Jpi_Inner",
+        "_2Z52EZbqJOjg5KyYmpHBOP"
+    ],
+    "13bc29f4-1d20-5c7b-b808-47c339249a6d": [
+        "_PNTz6Jpi_Loading",
+        "_2l9kgVa_ez7QCWFglLS5rU"
+    ],
+    "d8eacf16-21d7-5177-979c-f72ae7ebe4ea": [
+        "_PNTz6Jpi_MultilineClippedText",
+        "_3Bhzf9maIIuZbtCPLDBR_o"
+    ],
+    "4fb09b13-a50f-5d20-b640-0c720abb1758": [
+        "_PNTz6Jpi_OuterWrapper",
+        "_2DwCtjG1aNwF90x5KQcPtO"
+    ],
+    "fd6a90c9-c4a6-586c-b243-a3da6d2b29e6": [
+        "_PNTz6Jpi_SummaryText",
+        "_1ZLxVRtl5NouVl3ctCv9xu"
+    ],
+    "93a41a4e-c9f7-5bf8-8fae-447db252ac44": [
+        "_PNTz6Jpi_Title",
+        "_1OhUuSP_fufxyh1k3PnYpA"
+    ],
+    "3aff7a02-fb76-5f25-9aae-589fefcd4b88": [
+        "_4Ti17d04_Ctn",
+        "_1BsM1CkjnMDPzj027r1TEC"
+    ],
+    "4a891ab7-69c4-5d90-a6a8-18ff41b70167": [
+        "_lEUozNMk_DynamicLinkBox",
+        "_3OFDUxRty2ooEGGBg8vLNM"
+    ],
+    "fa4477f9-69cd-59ec-8f4f-77b954f6fea1": [
+        "_lEUozNMk_DynamicLink_Author",
+        "_2CrHQnyBFUGqFf-6TbIsUA"
+    ],
+    "fe5d9c33-5bde-5110-a63f-7644f4ea5b46": [
+        "_lEUozNMk_DynamicLink_AuthorName",
+        "_6R7Q24Jlkhs_t0fYUHxQx"
+    ],
+    "731f1cc0-e148-50ed-9a73-55702ec8f9f3": [
+        "_lEUozNMk_DynamicLink_Content",
+        "_29vvBvtM17Ec_19L9VJZdk"
+    ],
+    "445d5b50-fa3b-560a-aea1-e447babc0b27": [
+        "_lEUozNMk_DynamicLink_Date",
+        "_15wEuEj-SyCZ4J4hJqtmgD"
+    ],
+    "e346e4d7-f8e1-5ab3-849e-d0cff153cb6f": [
+        "_lEUozNMk_DynamicLink_Description",
+        "_1iv64lWG6UxhSX400UsU1S"
+    ],
+    "c64c4389-782c-5dea-82e2-d6cb2464f325": [
+        "_lEUozNMk_DynamicLink_Name",
+        "_25KAQjQwrv2EL8tnlLeTB7"
+    ],
+    "25ff4126-fd74-570e-b53f-3b34b92921ff": [
+        "_lEUozNMk_DynamicLink_Preview",
+        "_4x92ciMecfHsd6LXEp3zX"
+    ],
+    "96180d66-199f-5b03-9aa0-d51a6f9db122": [
+        "_lEUozNMk_DynamicLink_StoreWidget",
+        "uvn7ESAm1Jwm-SOwZmBWO"
+    ],
+    "8da85e76-1336-5a97-879f-14b2c8b4593a": [
+        "_lEUozNMk_DynamicLink_URL",
+        "_9135FDWNKXjIolFAo7Gub"
+    ],
+    "4de67d9d-da3a-5e10-907a-9130275e66bb": [
+        "_lEUozNMk_DynamicLink_YouTubeEmbed",
+        "_3Jd9PKMuBGuSbDBCsV03Oo"
+    ],
+    "77562cbb-794d-5c4f-8bbf-2a2b5565c200": [
+        "_lEUozNMk_DynamicLink_YoutubeViews",
+        "_3ZgvwxMMqbe_8wVfRiQ9kq"
+    ],
+    "98231f32-4a1d-52c3-859f-880f431c7359": [
+        "_lEUozNMk_Dynamiclink_Content",
+        "_3UUlLNsS9oZt2zNHM5T76z"
+    ],
+    "aa9dc4ce-252f-53ac-92cf-da94cc83bb60": [
+        "_z6mbN1Mb_Clock",
+        "_1fkjQjQi0XDbCTz-EIyrFM"
+    ],
+    "fe7744bd-04a0-51c6-bc7a-5c232c88b2bf": [
+        "_z6mbN1Mb_CurrentUser",
+        "_3PjsoiM_w0xipON2HD7EID"
+    ],
+    "56559401-f977-5638-92f4-1f0c3c61445d": [
+        "_z6mbN1Mb_Enter",
+        "_61NTIVi6F4xY_Ol1iLky_"
+    ],
+    "37167936-adc3-5643-a8e7-6fd31da17cc3": [
+        "_z6mbN1Mb_EnterActive",
+        "_2N9bTHbBRiIrKQhirjTl6D"
+    ],
+    "4cbae2ec-baa2-5903-9134-26df27e5fc37": [
+        "_z6mbN1Mb_Exit",
+        "_16WM82-I9u0cqEgv0-BfBt"
+    ],
+    "1e7e726d-577f-5eff-81c1-3ced65c005a4": [
+        "_z6mbN1Mb_ExitActive",
+        "_2qszUXEhOSFwm2ojQQFJR5"
+    ],
+    "779ebcd3-2d08-5c36-9ddd-eabe74eec468": [
+        "_z6mbN1Mb_HeaderArea",
+        "_3c8HzZDjoX0_lUXge5bTnB"
+    ],
+    "7a920ed8-78c6-5a7e-9647-51f502134695": [
+        "_z6mbN1Mb_HeaderRotation",
+        "EvnT8yBCnSbYdObTA6xR"
+    ],
+    "b5dd82ee-3ee1-572a-8c00-2a397c39d1d5": [
+        "_z6mbN1Mb_HeaderRotationWrapper",
+        "_1L9LNcl0ExpzKLaO39CIai"
+    ],
+    "121c5b49-0a7e-5a7e-816e-b9a113f2f8bd": [
+        "_z6mbN1Mb_HeroFrame",
+        "_1MkyfiJJxAzepqY2h1t10Y"
+    ],
+    "1841355b-bc41-55ed-ab04-042c9c565682": [
+        "_z6mbN1Mb_HeroLayer",
+        "ULCyD0eTYSDAAbZ8bzHOp"
+    ],
+    "c7d1f07c-f391-55e0-9feb-8a0a346a48b8": [
+        "_z6mbN1Mb_HeroLogo",
+        "xTdtIbvZaB37tFeSBomtz"
+    ],
+    "44ea38ac-c38b-5181-a31b-ccfa2d5c6fb7": [
+        "_z6mbN1Mb_HeroPanel",
+        "_3vIZfkuhRVXanW7ZxNoA5H"
+    ],
+    "807f6539-fa77-52e8-ba34-3c10da1d7a9b": [
+        "_z6mbN1Mb_Image",
+        "Iiu710i5pECKIO2SKDmwI"
+    ],
+    "4909af41-eaa1-57de-ae13-35e4b9e25e2e": [
+        "_z6mbN1Mb_NameAndStatus",
+        "_32bR7hQCYwMGrOIDtsUADF"
+    ],
+    "f63aad63-2294-58f4-853d-7e49b52b3242": [
+        "_z6mbN1Mb_PreloadLayer",
+        "_1K-jfVWGJfLAt6XclL4cj9"
+    ],
+    "7da9c474-ea3a-56b7-a4f5-90db7e005ef3": [
+        "_z6mbN1Mb_ScreenShotFrame",
+        "_2YIQB26OSroW0xda52haYU"
+    ],
+    "5995878d-e3a5-5591-9b01-513484c6c549": [
+        "_z6mbN1Mb_ScreensaverGameBackgrounds",
+        "_1r8UZsCMowDykxAAztsyv2"
+    ],
+    "d05e1971-c56e-5359-afbb-15734680fcbb": [
+        "_z6mbN1Mb_ScreenshotPanel",
+        "_2eww_rEDGfRfyoRgIgYV6R"
+    ],
+    "b0cc5e01-168f-513d-86b2-6973fd3e94d5": [
+        "_z6mbN1Mb_TransitionWrapper",
+        "_1tW64pHVo70edkk7ErSWWS"
+    ],
+    "de3e0920-31b9-5979-9635-8dce748f8a4e": [
+        "_z6mbN1Mb_hero-image-drift",
+        "_1BVKF8zvShAWWt6LhP-mBA"
+    ],
+    "b7406191-3e3b-5ebc-b316-158aa6ec96fe": [
+        "_z6mbN1Mb_screenshot-image-drift",
+        "_3cy2XyMDJ1J47bumyv0Ngh"
+    ],
+    "7315b4bf-0ed6-514a-86ea-6db93b9c2376": [
+        "_Du7lDdHW_PlaceholderImg",
+        "wJ2r7A6UK2WbDVoNBgd36"
+    ],
+    "990da365-0921-589b-8e58-27c67b4e8fef": [
+        "_Du7lDdHW_PreviewYouTubeVideo",
+        "uT9FPw-RIxscziWGUKvsY"
+    ],
+    "a22c2bee-f26f-5126-9a46-5eb5043ab575": [
+        "_Du7lDdHW_floatLeft",
+        "_3uqwDPu50ujydI4AiMemeN"
+    ],
+    "69d4f61b-084f-5d67-971f-a968a428dee2": [
+        "_Du7lDdHW_floatRight",
+        "_29hzTH-jljX8p2qXboZbXW"
+    ],
+    "d088244c-6de8-54b0-8e4f-105803ecdeb3": [
+        "_Du7lDdHW_sizeFull",
+        "_2i-wrmaduZQDwFtlSpRG5b"
+    ],
+    "7babda75-ce89-58aa-89b4-13685bc0dd18": [
+        "_Du7lDdHW_sizeThumb",
+        "_34JfgvTZH0JwSWKnwpT5tf"
+    ],
+    "6f7902e3-a2ed-5d7b-8675-adc87d7431c8": [
+        "_DWzWaMOv_Container",
+        "_340f4eUQ6g1wEP6XkvOi2m"
+    ],
+    "fc694aa5-9c87-5970-b5c5-221b840b6b2a": [
+        "_DWzWaMOv_ShareDescription",
+        "tGyGdizK9jd1VLqtQkToE"
+    ],
+    "b67bd226-d1ff-581f-adf5-e71e55443e65": [
+        "_DWzWaMOv_ShareLink",
+        "_2hGcij8WDcw-rJXIjWEBu"
+    ],
+    "d969e18b-f98d-599a-8ba1-e10f5438b6a7": [
+        "_DWzWaMOv_SmallAvatar",
+        "ZcSEHEBy6UFM8ApdYw48V"
     ]
 }
