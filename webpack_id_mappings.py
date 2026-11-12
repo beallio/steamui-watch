@@ -199,8 +199,44 @@ if __name__ == "__main__":
 
         print(f"Successfully mapped {success} modules, failed to map {fail} modules in mapping {mapping.base_version.timestamp}->{mapping.new_version.timestamp}.")
 
+    # A stable and a beta history can reach the same module in a client version both branches
+    # share. One module/version point may only have one history, so join those chains, keeping
+    # the first-created chain id.
+    root = {chain.id: chain.id for chain in chains}
+    order = {chain.id: index for index, chain in enumerate(chains)}
+    point_owner = {}
+
+    def find(chain_id : str) -> str:
+        while root[chain_id] != chain_id:
+            root[chain_id] = root[root[chain_id]]
+            chain_id = root[chain_id]
+
+        return chain_id
+
     for chain in chains:
-        all[chain.id] = chain.chain
-        
+        for version, module_id in chain.chain.items():
+            point = (version, module_id)
+
+            if point in point_owner:
+                older, newer = find(point_owner[point]), find(chain.id)
+                if older != newer:
+                    if order[newer] < order[older]:
+                        older, newer = newer, older
+                    root[newer] = older
+            else:
+                point_owner[point] = chain.id
+
+    for chain in chains:
+        owner = find(chain.id)
+
+        if owner not in all:
+            all[owner] = {}
+
+        for version, module_id in chain.chain.items():
+            if version in all[owner] and all[owner][version] != module_id:
+                raise Exception(f"Chain {owner} already contains a different module for version {version}")
+
+            all[owner][version] = module_id
+
     with open("./webpack_id_mappings.json", 'w') as fp:
         json.dump(all, fp)

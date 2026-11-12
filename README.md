@@ -7,6 +7,8 @@ Use the normal Steam Deck tools in that repository to update the lists; do not r
 
 The pipeline keeps continuing modules separate from new modules that look similar.
 When an old module moves and Steam reuses its number, both modules keep separate histories.
+A module that splits in both branches must get the same reviewed mapping in each branch's transition; otherwise one history ends up owning two current modules and publishing stops with a chain conflict.
+When both branches publish the same client version, histories that reach the same module are joined so each module/version point keeps one history.
 Older generated class names remain valid through the seed data.
 See the [developer guide](https://github.com/beallio/steamui-watch/blob/main/DEVELOPER.md#generate-css-mappings-locally) for maintenance and test commands.
 

@@ -108,6 +108,24 @@ class ChainTest(unittest.TestCase):
             chains = json.loads((root / 'webpack_id_mappings.json').read_text())
             self.assertEqual(list(chains.values()), [{'100': '1', '200': '1'}])
 
+    def test_histories_that_reach_the_same_shared_version_module_are_joined(self):
+        with tempfile.TemporaryDirectory(dir=TEMP) as directory:
+            root = Path(directory)
+            (root / 'webpack').mkdir()
+            (root / 'webpack-mappings').mkdir()
+            shared = {f'Shared{i}': f'class{i}' for i in range(8)}
+            for version, payload in [
+                ('100.stable', {'1': {**shared, 'A1': 'a1', 'A2': 'a2'}}),
+                ('110.beta', {'2': {**shared, 'B1': 'b1', 'B2': 'b2'}}),
+                ('200.stable', {'3': {**shared, 'A1': 'a1', 'B1': 'b1'}}),
+                ('200.beta', {'3': {**shared, 'A1': 'a1', 'B1': 'b1'}}),
+            ]:
+                (root / 'webpack' / f'{version}.json').write_text(json.dumps(payload))
+            subprocess.run([sys.executable, str(ROOT / 'webpack_id_mappings.py')], cwd=root,
+                           check=True, capture_output=True, text=True)
+            chains = json.loads((root / 'webpack_id_mappings.json').read_text())
+            self.assertEqual(list(chains.values()), [{'100': '1', '110': '2', '200': '3'}])
+
 
 if __name__ == '__main__':
     unittest.main()

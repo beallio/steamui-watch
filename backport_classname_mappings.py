@@ -57,8 +57,13 @@ def generate(data : dict, version : int, branch : str):
 
     return final
 
-last_beta = sorted([int(x[0]) for x in data["versions"].items() if x[1] == "beta"])[-1]
-last_stable = sorted([int(x[0]) for x in data["versions"].items() if x[1] == "stable"])[-1]
+def latest(branch : str) -> int:
+    # classname_mappings.json stores one type per timestamp, so a stable/beta pair on the same
+    # client loses a branch there; the dump files are the authoritative per-branch versions.
+    return max(int(x.split(".")[0]) for x in os.listdir("./webpack") if x.endswith(f".{branch}.json"))
+
+last_beta = latest("beta")
+last_stable = latest("stable")
 
 beta = generate(data, last_beta, "beta")
 stable = generate(data, last_stable, "stable")
