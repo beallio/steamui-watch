@@ -11,19 +11,20 @@ TEMP = Path(os.environ.get('TMPDIR') or '/var/tmp/omp-1000')
 TEMP.mkdir(mode=0o700, parents=True, exist_ok=True)
 
 
-def backport(dumps, literals=None):
-    """Run the real backport on one module whose Button class changed in beta 150 but not in stable 200."""
-    classname_mappings = {
-        'versions': {'100': 'stable', '150': 'beta', '200': 'stable'},
-        'module_mappings': {'m': {
-            'name': 'menu',
-            'ids': {'100': '1', '150': '1', '200': '1'},
-            'classname_mappings': {
-                'Button': {'0': 'Button', '100': 'stable_hash', '150': 'beta_hash'},
-                'Launch': {'0': 'Launch', '100': 'launch_hash'},
-            },
-        }},
-    }
+def backport(dumps, literals=None, classname_mappings=None):
+    """Run the real backport on a mapping doc for the supplied dumps."""
+    if classname_mappings is None:
+        classname_mappings = {
+            'versions': {'100': 'stable', '150': 'beta', '200': 'stable'},
+            'module_mappings': {'m': {
+                'name': 'menu',
+                'ids': {'100': '1', '150': '1', '200': '1'},
+                'classname_mappings': {
+                    'Button': {'0': 'Button', '100': 'stable_hash', '150': 'beta_hash'},
+                    'Launch': {'0': 'Launch', '100': 'launch_hash'},
+                },
+            }},
+        }
     with tempfile.TemporaryDirectory(dir=TEMP) as tmp:
         repo = Path(tmp)
         (repo / 'classname_mappings.json').write_text(json.dumps(classname_mappings))
@@ -51,6 +52,22 @@ class BackportTest(unittest.TestCase):
         self.assertIn('beta_hash', stable['m_Button'])
         self.assertEqual(beta['m_Button'][-1], 'beta_hash')
         self.assertIn('stable_hash', beta['m_Button'])
+
+    def test_same_timestamp_uses_each_branch_dump(self):
+        # The versions map keeps one branch type per timestamp, so the dumps must choose the version.
+        classname_mappings = {
+            'versions': {'300': 'beta'},
+            'module_mappings': {'m': {
+                'name': 'menu',
+                'ids': {'300': '1'},
+                'classname_mappings': {'Button': {'0': 'Button', '300': 'stable_hash', '301': 'beta_hash'}},
+            }},
+        }
+        stable, beta = backport({'300.stable.json': {'1': {'Button': 'stable_hash'}},
+                                 '300.beta.json': {'1': {'Button': 'beta_hash'}}},
+                                classname_mappings=classname_mappings)
+        self.assertEqual(stable['m_Button'][-1], 'stable_hash')
+        self.assertEqual(beta['m_Button'][-1], 'beta_hash')
 
     def test_class_names_steam_uses_plainly_are_not_translated(self):
         stable, beta = backport(DUMPS, {'200.stable.json': ['Launch'], '150.beta.json': ['Launch']})
