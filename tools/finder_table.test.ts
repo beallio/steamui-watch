@@ -55,3 +55,26 @@ test("unknown predicate forms are reported, not dropped", () => {
     "f.js: F: comparison `==` with text",
   ]);
 });
+
+test("class module empty-object fallback and private search || fallbacks", () => {
+  const { entries, unread } = table(`
+    export const cls = (findClassModule((m) => m.Title && !m['vr-bar']) || {});
+    const [mod, sec] = findModuleDetailsByExport((e) => e.toString?.()?.includes('.PanelSection'));
+    export const PanelSection = sec || findModuleExport((e) => e.toString().includes('e.spinner&&'));
+    export const PanelSectionRow = (mod && Object.values(mod).filter((e) => !e.toString().includes('.PanelSection'))[0]) || (() => null);
+    const tabsMod = findModuleByExport((e) => e.toString().includes('.TabRowTabs'));
+    export const Tabs = (tabsMod && Object.values(tabsMod).find((e) => e.toString().includes('(function()'))) || findModuleExport((e) => e.toString().includes('role:"tablist"'));
+  `);
+  expect(unread).toEqual([]);
+  expect(entries).toEqual([
+    { name: "f.js: cls", classes: { has: ["Title"], lacks: ["vr-bar"] } },
+    { name: "f.js: PanelSection", code: [[{ text: ".PanelSection" }, { text: "e.spinner&&" }]] },
+    {
+      name: "f.js: Tabs",
+      code: [
+        [{ text: ".TabRowTabs" }, { text: 'role:"tablist"' }],
+        [{ text: "(function()" }, { text: 'role:"tablist"' }],
+      ],
+    },
+  ]);
+});

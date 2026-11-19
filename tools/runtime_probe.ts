@@ -52,6 +52,7 @@ const { values: args } = parseArgs({
     "props-dir": { type: "string" },
     "baseline-dir": { type: "string" },
     "extras-only": { type: "boolean", default: false },
+    "ui-only": { type: "boolean", default: false },
   },
 });
 
@@ -202,9 +203,16 @@ export function fingerprint(source: string) {
   return { strings: [...strings].sort(), names: [...names].sort() };
 }
 
-const PROBE = (files: string[], extrasOnly = false) => `(async (files, manifest, extrasOnly) => {
+const PROBE = (files: string[], opts: { extrasOnly?: boolean; uiOnly?: boolean; isVite?: boolean } = {}) => `(async (files, manifest, opts) => {
+  const { extrasOnly = false, uiOnly = false, isVite = false } = opts;
   window.__stubInert = true;
-  const out = { boot: {}, files: {}, loader: {}, extras: Object.fromEntries(Object.keys(manifest.components).map((name) => [name, "unavailable"])), snapshot: {} };
+  const out = {
+    boot: {},
+    files: {},
+    loader: {},
+    extras: uiOnly ? {} : Object.fromEntries(Object.keys(manifest.components).map((name) => [name, "unavailable"])),
+    snapshot: {},
+  };
   let W;
   try { W = await import("/probe/webpack.js"); } catch (e) { out.boot.webpack = "threw: " + e; return out; }
   ${GLOBALS}
@@ -239,10 +247,12 @@ const PROBE = (files: string[], extrasOnly = false) => `(async (files, manifest,
     if (!at) return;
     try { out.snapshot[name] = { at, ...describe(v) }; } catch (e) { out.snapshot[name] = { at, error: String(e).slice(0, 200) }; }
   };
-  const matchExtras = ${matchExtras};
-  for (const [name, matches] of Object.entries(matchExtras(W.modules, manifest))) {
-    out.extras[name] = matches.length;
-    if (matches.length === 1) record("extras:" + name, matches[0]);
+  if (!uiOnly) {
+    const matchExtras = ${matchExtras};
+    for (const [name, matches] of Object.entries(matchExtras(W.modules, manifest))) {
+      out.extras[name] = matches.length;
+      if (matches.length === 1) record("extras:" + name, matches[0]);
+    }
   }
   for (const k of ["SP_REACT", "SP_REACTDOM", "SP_JSX"]) out.boot[k] = !!window[k];
   if (extrasOnly) {
@@ -262,25 +272,30 @@ const PROBE = (files: string[], extrasOnly = false) => `(async (files, manifest,
   const check = (name, fn) => {
     try { const v = fn(); out.loader[name] = v ? "ok" : "missing"; record(name, v); } catch (e) { out.loader[name] = "threw: " + e; }
   };
-  const store = /^\\(\\)=>\\([\\w$]+(?:\\|\\|=|\\|\\|(?:[\\w$]+\\(|\\([\\w$]+=))new [\\w$]+\\)?,[\\w$]+\\)$/;
-  const backstack = () => W.findModuleByExport((e) => typeof e == "string" && e == "router-backstack", 20);
-  const qam = () => W.findModuleByExport((e) => e?.type?.toString?.()?.includes("QuickAccessMenuBrowserView"));
-  check("errorboundary-hook: error reporting store", () => W.findModuleExport((e) => typeof e == "function" && e?.toString && store.test(e.toString())));
-  check("router-hook: Route", () => Object.values(backstack()).find((e) => typeof e == "function" && (/routePath:[\\w$]+\\.match\\?\\.path./.test(e.toString()) || /routePath:null===\\(.=.\\.match\\)/.test(e.toString()))));
-  check("tabs-hook: QAM renderer", () => Object.values(qam()).find((e) => e?.type?.toString?.()?.includes("QuickAccessMenuBrowserView")));
-  check("toaster: Valve toast renderer", () => W.findModuleExport((e) => e?.toString?.()?.includes('controller:"notification",method:')));
-  check("toaster: NotificationStore removal methods", () => typeof window.NotificationStore?.RemoveGroupFromTray === "function"
-    && typeof window.NotificationStore?.RemoveFromToastsWhere === "function");
-  // library.ts needs a set m_history, which only the Gaming Mode router sets; check the store's shape.
-  check("filepicker: history store", () => W.findModuleExport((e) => typeof e == "object" && "m_history" in e && "m_navigator" in e && "m_locationPathname" in e));
-  check("DropdownMultiselect: classes", () => W.findModule((m) => m?.DropDownControlButton && m?.["duration-app-launch"]));
-  check("Store: TabCount", () => W.findModule((m) => m?.TabCount && m?.TabTitle));
+  if (!uiOnly) {
+    const store = /^\\(\\)=>\\([\\w$]+(?:\\|\\|=|\\|\\|(?:[\\w$]+\\(|\\([\\w$]+=))new [\\w$]+\\)?,[\\w$]+\\)$/;
+    const backstack = () => W.findModuleByExport((e) => typeof e == "string" && e == "router-backstack", 20);
+    const qam = () => W.findModuleByExport((e) => e?.type?.toString?.()?.includes("QuickAccessMenuBrowserView"));
+    check("errorboundary-hook: error reporting store", () => W.findModuleExport((e) => typeof e == "function" && e?.toString && store.test(e.toString())));
+    check("router-hook: Route", () => Object.values(backstack()).find((e) => typeof e == "function" && (/routePath:[\\w$]+\\.match\\?\\.path./.test(e.toString()) || /routePath:null===\\(.=.\\.match\\)/.test(e.toString()))));
+    check("tabs-hook: QAM renderer", () => Object.values(qam()).find((e) => e?.type?.toString?.()?.includes("QuickAccessMenuBrowserView")));
+    check("toaster: Valve toast renderer", () => W.findModuleExport((e) => e?.toString?.()?.includes('controller:"notification",method:')));
+    check("toaster: NotificationStore removal methods", () => typeof window.NotificationStore?.RemoveGroupFromTray === "function"
+      && typeof window.NotificationStore?.RemoveFromToastsWhere === "function");
+    // library.ts needs a set m_history, which only the Gaming Mode router sets; check the store's shape.
+    check("filepicker: history store", () => W.findModuleExport((e) => typeof e == "object" && "m_history" in e && "m_navigator" in e && "m_locationPathname" in e));
+    // Vite/Rolldown tree-shakes CSS class modules out of JS; decky-loader guards both call sites with || {}.
+    if (!isVite) {
+      check("DropdownMultiselect: classes", () => W.findModule((m) => m?.DropDownControlButton && m?.["duration-app-launch"]));
+      check("Store: TabCount", () => W.findModule((m) => m?.TabCount && m?.TabTitle));
+    }
+  }
   // @decky/ui finders whose result is private, so a failure leaves no null export.
   // components/Modal.js: showModal is always a function; it calls the private showModalRaw.
   check("@decky/ui Modal.js: showModalRaw", () => W.findModuleExport((e) => typeof e === "function" && e.toString?.().includes("props.bDisableBackgroundDismiss") && !e?.prototype?.Cancel));
   out.boot.modules = W.modules.size;
   return out;
-})(${JSON.stringify(files)}, ${JSON.stringify(extras)}, ${JSON.stringify(extrasOnly)})`;
+})(${JSON.stringify(files)}, ${JSON.stringify(extras)}, ${JSON.stringify(opts)})`;
 
 export async function fetchBundle(branch: string, dir: string) {
   const get = (url: string) => fetch(url, { headers: { "User-Agent": "steamui-watch" } });
@@ -607,11 +622,14 @@ function failures(label: string, out: ProbeResult, isVite = false) {
 }
 
 async function writeReport(name: string, label: string, ui: string, bad: string[]) {
+  const footer = args["ui-only"]
+    ? "The page ran without Steam, against a stand-in `SteamClient`."
+    : "The page ran without Steam, against a stand-in `SteamClient`. Confirm on the SteamOS VM, then update the finder "
+      + "or `tools/runtime_probe.ts`. Close this issue when done.";
   await Bun.write(join(args["report-dir"]!, `${name}.md`), [
     `Headless runtime check of the Steam Deck client \`${label}\` with \`@decky/ui\` ${ui}.`, "",
     ...bad.map((line) => `- ${line.replace(/^([^:]+):/, "**$1**:")}`), "",
-    "The page ran without Steam, against a stand-in `SteamClient`. Confirm on the SteamOS VM, then update the finder "
-      + "or `tools/runtime_probe.ts`. Close this issue when done.", "",
+    footer, "",
   ].join("\n"));
 }
 
@@ -640,7 +658,11 @@ if (import.meta.main) {
       const files = await buildProbe(root, runWork);
       const page = await openSteamPage(root, runWork);
       pages.push(page);
-      const out = await page.evaluate<ProbeResult>(PROBE(files, args["extras-only"]));
+      const out = await page.evaluate<ProbeResult>(PROBE(files, {
+        extrasOnly: args["extras-only"],
+        uiOnly: args["ui-only"],
+        isVite: page.isVite,
+      }));
       if (args["props-dir"] && !page.isVite && Object.values(out.extras).every((count) => count === 1)) {
         out.factories = await page.evaluate<Record<string, string>>(`(() => {
           let require;

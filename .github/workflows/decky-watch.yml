@@ -26,21 +26,25 @@ jobs:
         with:
           bun-version: "1.3.14"
       - name: Get @decky/ui
-        # The version the decky-loader fork locks, and npm's latest for the pre-upgrade check.
+        # The version the decky-loader fork locks (patched with viteCompatDeckyUi), and npm's latest
+        # for both the fork pre-upgrade check and the unmodified upstream Vite tracker.
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           dir="$RUNNER_TEMP/steamui-watch/decky-ui"
-          mkdir -p "$dir"
+          mkdir -p "$dir/upstream"
           # awk reads to the end: exiting early would kill gh with SIGPIPE under pipefail.
           ui=$(gh api repos/beallio/decky-loader/contents/frontend/pnpm-lock.yaml --jq .content | base64 -d |
             awk '/^      .@decky\/ui.:$/ && !found { getline; getline; sub(/^ *version: */, ""); sub(/[(].*/, ""); print; found = 1 }')
           [ -n "$ui" ] || { echo 'no @decky/ui version in the decky-loader lock file' >&2; exit 1; }
+          gh api repos/beallio/decky-loader/contents/frontend/rollup.config.js --jq .content | base64 -d > "$dir/rollup.config.js"
+          bun install --frozen-lockfile
           latest=$(npm view @decky/ui version)
           for v in $(printf '%s\n' "$ui" "$latest" | sort -u); do
             npm pack "@decky/ui@$v" --pack-destination "$dir" --silent
-            mkdir "$dir/$v"
-            tar -xzf "$dir/decky-ui-$v.tgz" -C "$dir/$v"
+            mkdir -p "$dir/upstream/$v" "$dir/$v"
+            tar -xzf "$dir/decky-ui-$v.tgz" -C "$dir/upstream/$v"
+            bun tools/apply_ui_compat.ts "$dir/rollup.config.js" "$dir/upstream/$v/package" "$dir/$v/package"
           done
           printf 'DECKY_UI=%s\nDECKY_UI_LATEST=%s\n' "$ui" "$latest" >> "$GITHUB_ENV"
       - name: Fetch finder baseline
@@ -87,19 +91,30 @@ jobs:
           bun tools/runtime_probe.ts --decky-ui "$(ui "$DECKY_UI")" --report-dir "$reports/runtime" \
             --baseline-dir "$RUNNER_TEMP/steamui-watch/finder-baseline/snapshots" \
             --snapshot-dir "$RUNNER_TEMP/steamui-watch/snapshots" --props-dir "$RUNNER_TEMP/steamui-watch/props"
-          # Pre-upgrade check: the npm latest the fork has not locked yet. Its passes close older upgrade reports.
+          # Pre-upgrade check: the npm latest the fork has not locked yet (with fork Vite compat). Its passes close older upgrade reports.
           upgrade="$reports/upgrade/$DECKY_UI_LATEST"
           mkdir -p "$upgrade"
           if [ "$DECKY_UI_LATEST" = "$DECKY_UI" ]; then
             cp "$reports"/runtime/*.ok "$upgrade/" 2>/dev/null || true
-            exit 0
+          else
+            bun tools/runtime_probe.ts --decky-ui "$(ui "$DECKY_UI_LATEST")" --report-dir "$upgrade" \
+              --baseline-dir "$RUNNER_TEMP/steamui-watch/finder-baseline/snapshots"
+            for f in "$upgrade"/*.md; do
+              [ -e "$f" ] || continue
+              body=$(cat "$f")
+              printf '`@decky/ui` %s is the npm `latest`; the fork locks %s. Fix this before the fork upgrades.\n\n%s\n' "$DECKY_UI_LATEST" "$DECKY_UI" "$body" > "$f"
+            done
           fi
-          bun tools/runtime_probe.ts --decky-ui "$(ui "$DECKY_UI_LATEST")" --report-dir "$upgrade" \
-            --baseline-dir "$RUNNER_TEMP/steamui-watch/finder-baseline/snapshots"
-          for f in "$upgrade"/*.md; do
+          # Separate upstream tracker: unmodified npm @decky/ui latest on Vite publicbeta.
+          upstream="$reports/upstream"
+          mkdir -p "$upstream"
+          bun tools/runtime_probe.ts --branch publicbeta --ui-only \
+            --decky-ui "$RUNNER_TEMP/steamui-watch/decky-ui/upstream/$DECKY_UI_LATEST/package" \
+            --report-dir "$upstream"
+          for f in "$upstream"/*.md; do
             [ -e "$f" ] || continue
             body=$(cat "$f")
-            printf '`@decky/ui` %s is the npm `latest`; the fork locks %s. Fix this before the fork upgrades.\n\n%s\n' "$DECKY_UI_LATEST" "$DECKY_UI" "$body" > "$f"
+            printf 'Rolling tracker for unmodified upstream `@decky/ui` (`%s`, npm `latest`) on Steam Deck `publicbeta`.\n\n`beallio/decky-loader` currently works around these Vite/Rolldown gaps via `viteCompatDeckyUi()` in `frontend/rollup.config.js`. This issue updates in place on each run and closes automatically once upstream `@decky/ui` passes on `publicbeta`.\n\n%s\n' "$DECKY_UI_LATEST" "$body" > "$f"
           done
       - name: Save finder snapshots
         # Retain first finder snapshots and prop observations as reviewed versioned evidence.
@@ -212,13 +227,14 @@ jobs:
         run: |
           reports="$RUNNER_TEMP/steamui-watch/reports"
           issues=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --limit 1000 --json number,title,state --jq '.[] | "\(.number)\t\(.title)\t\(.state)"')
-          for report in "$reports"/static/*.md "$reports"/runtime/*.md "$reports"/upgrade/*/*.md "$reports"/copies/*.md "$reports"/props/*.md; do
+          for report in "$reports"/static/*.md "$reports"/runtime/*.md "$reports"/upgrade/*/*.md "$reports"/upstream/*.md "$reports"/copies/*.md "$reports"/props/*.md; do
             [ -e "$report" ] || continue
             name=$(basename "$report" .md)
             case "$report" in
               */props/*.reference.md) continue ;;
               */runtime/*) title="Decky runtime finders failing in ${name/-/ }" ;;
               */upgrade/*) ui=$(basename "$(dirname "$report")"); title="Decky finders failing with @decky/ui $ui in ${name/-/ }" ;;
+              */upstream/*) title="Upstream @decky/ui Vite compatibility tracker" ;;
               */copies/*) title="Decky finder copies out of date ($name)" ;;
               */props/*) title="Decky extra props changed in ${name/-/ }" ;;
               *) title="Decky finders missing in ${name/-/ }" ;;
@@ -234,7 +250,7 @@ jobs:
             done <<<"$issues"
             if [ "$state" = open ] || [ "$state" = OPEN ]; then
               case "$report" in
-                */runtime/*|*/upgrade/*) gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --body-file "$report" ;;
+                */runtime/*|*/upgrade/*|*/upstream/*) gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --body-file "$report" ;;
               esac
             elif [ -z "$number" ]; then
               gh issue create --repo "$GITHUB_REPOSITORY" --assignee "$GITHUB_REPOSITORY_OWNER" \
@@ -252,6 +268,11 @@ jobs:
               "Decky runtime finders failing in "*) check=runtime ;;
               # Any @decky/ui version: a pass with a newer latest makes an older latest's report moot.
               "Decky finders failing with @decky/ui "*) check='upgrade/*' ;;
+              "Upstream @decky/ui Vite compatibility tracker")
+                if compgen -G "$reports/upstream/beta-*.ok" >/dev/null; then
+                  gh issue close "$number" --repo "$GITHUB_REPOSITORY" --comment "Unmodified upstream \`@decky/ui\` now passes on publicbeta ([run]($run))." </dev/null
+                fi
+                continue ;;
               "Decky finder copies out of date ("*)
                 if [ -e "$reports/copies/ok" ]; then
                   gh issue close "$number" --repo "$GITHUB_REPOSITORY" --comment "The finder copies match the fork again ([run]($run))." </dev/null

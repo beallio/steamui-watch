@@ -42,15 +42,25 @@ const literalText = (n: Node): string | undefined =>
   n?.type === "Literal" && typeof n.value === "string" ? n.value
     : n?.type === "TemplateLiteral" && !n.expressions.length ? n.quasis[0].value.cooked : undefined;
 
+const unwrapEmptyObjectFallback = (n: Node) =>
+  n.type === "LogicalExpression" && n.operator === "||" && n.right.type === "ObjectExpression" && !n.right.properties.length
+    ? n.left
+    : n;
+
+type PrivateSearch = { entry: Entry; code: Cnf; superseded: boolean };
+
 /** Reads one file's predicates. `where` names the entry for error messages. */
 class Reader {
   propRegexes = new Map<string, Atom>();
+  privateVars = new Map<string, PrivateSearch>();
   unread: string[] = [];
   searched = false;
   /** The current predicate's parameters: only names tested on them are Steam names (not `window.SP_REACT`). */
   params = new Set<string>();
   /** Inside a predicate, a form this reader does not know is reported instead of read as "no constraint". */
   inPredicate = false;
+  /** Inside a top-level `||`, references to earlier private search variables carry their CNF and supersede the standalone entry. */
+  resolvePrivateVars = false;
   where = "";
 
   fail(why: string, n: Node) {
@@ -62,8 +72,16 @@ class Reader {
   cnf(n: Node): Cnf {
     switch (n.type) {
       case "ChainExpression": return this.cnf(n.expression);
-      case "LogicalExpression":
-        return n.operator === "&&" ? and(this.cnf(n.left), this.cnf(n.right)) : or(this.cnf(n.left), this.cnf(n.right));
+      case "LogicalExpression": {
+        if (n.operator === "&&") return and(this.cnf(n.left), this.cnf(n.right));
+        const prev = this.resolvePrivateVars;
+        if (!this.inPredicate) this.resolvePrivateVars = true;
+        try {
+          return or(this.cnf(n.left), this.cnf(n.right));
+        } finally {
+          this.resolvePrivateVars = prev;
+        }
+      }
       case "UnaryExpression": return []; // `!x`, `typeof x`: no needle
       case "BinaryExpression": {
         const text = literalText(n.left);
@@ -85,7 +103,18 @@ class Reader {
         return and(m.type === "Identifier" && this.params.has(m.name) ? names : [], base);
       }
       case "CallExpression": return this.call(n, true);
-      case "Identifier": case "Literal": case "ThisExpression": return [];
+      case "Identifier": {
+        if (this.resolvePrivateVars && !this.inPredicate) {
+          const priv = this.privateVars.get(n.name);
+          if (priv) {
+            this.searched = true;
+            priv.superseded = true;
+            return priv.code;
+          }
+        }
+        return [];
+      }
+      case "Literal": case "ThisExpression": return [];
       default: return this.inPredicate ? this.fail(`${n.type} in a predicate`, n) : this.within(n);
     }
   }
@@ -187,12 +216,14 @@ export function readSource(source: string, file: string) {
   const reader = new Reader();
   const entries: Entry[] = [];
   for (const statement of program.body) {
-    const decl = statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
+    const exported = statement.type === "ExportNamedDeclaration";
+    const decl = exported ? statement.declaration : statement;
     if (decl?.type !== "VariableDeclaration") continue;
     for (const d of decl.declarations) {
       const init = d.init;
       if (!init || isFunction(init)) continue;
-      const id = d.id.type === "Identifier" ? d.id.name : d.id.elements?.map((e: Node) => e?.name).filter(Boolean).join(", ");
+      const names = d.id.type === "Identifier" ? [d.id.name] : d.id.elements?.map((e: Node) => e?.name).filter(Boolean) ?? [];
+      const id = names.join(", ");
       reader.where = `${file}: ${id}`;
       if (init.type === "CallExpression" && init.callee.type === "Identifier" && init.callee.name === "createPropListRegex") {
         const [list, fromStart] = init.arguments;
@@ -201,17 +232,26 @@ export function readSource(source: string, file: string) {
         else reader.propRegexes.set(id, { props: props as string[], from_start: fromStart ? Boolean(fromStart.value) : true });
         continue;
       }
-      if (init.type === "CallExpression" && init.callee.type === "Identifier" && CLASS_HELPERS.has(init.callee.name)) {
-        const classes = init.callee.name === "findClassModule" ? reader.classes(init.arguments[0]) : reader.fail(`${init.callee.name} is not supported`, init);
+      const classInit = unwrapEmptyObjectFallback(init);
+      if (classInit.type === "CallExpression" && classInit.callee.type === "Identifier" && CLASS_HELPERS.has(classInit.callee.name)) {
+        const classes = classInit.callee.name === "findClassModule" ? reader.classes(classInit.arguments[0]) : reader.fail(`${classInit.callee.name} is not supported`, classInit);
         if (classes && !Array.isArray(classes)) entries.push({ name: reader.where, classes });
         continue;
       }
       reader.searched = false;
       const code = reader.cnf(init);
-      if (reader.searched && code.length) entries.push({ name: reader.where, code });
+      if (reader.searched && code.length) {
+        const entry: Entry = { name: reader.where, code };
+        entries.push(entry);
+        if (!exported) {
+          const priv: PrivateSearch = { entry, code, superseded: false };
+          for (const n of names) reader.privateVars.set(n, priv);
+        }
+      }
     }
   }
-  return { entries, unread: reader.unread };
+  const superseded = new Set([...reader.privateVars.values()].filter((p) => p.superseded).map((p) => p.entry));
+  return { entries: entries.filter((e) => !superseded.has(e)), unread: reader.unread };
 }
 
 if (import.meta.main) {
