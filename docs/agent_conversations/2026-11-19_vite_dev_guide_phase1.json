@@ -1,0 +1,42 @@
+{
+  "date": "2026-11-19",
+  "task_objective": "Phase 1: Build an exhaustive, cross-linked, metadata-only HTML developer guide (and machine-readable data.json) for Steam Deck publicbeta Vite/Rolldown bundles styled with Valve's Steam Deck / SteamUI color guide, bridging Vite hashes and runtime exports back to pre-Vite Webpack equivalents.",
+  "files_modified": [
+    "docs/plans/vite-dev-guide.md",
+    "tools/dev_guide_schema.ts",
+    "tools/dev_guide_extract.ts",
+    "tools/dev_guide_client.js",
+    "tools/dev_guide_html.ts",
+    "tools/dev_guide.ts",
+    "tools/dev_guide.test.ts",
+    "DEVELOPER.md"
+  ],
+  "tests_added": [
+    "tools/dev_guide.test.ts (14 unit tests covering Valve palette tokens, feature-area classification, strict public Valve-asset boundary validation, CSS index assembly, single-pass Vite AST chunk analysis, dual-bundle Webpack->Vite fingerprint matching, semantic naming & recipe sanitization, HTML split/single-file rendering, client JS syntax validation, and CLI mapping-data helpers)"
+  ],
+  "design_decisions": [
+    "Split guide client runtime into tools/dev_guide_client.js so it is syntax-checked directly by Acorn in tests and avoids nested template-literal escaping bugs.",
+    "Styled the HTML UI with Valve's Steam Deck GamepadUI (--gpSystem* / --gpStore* / --gpColor-*) and Steam Brand color guide tokens.",
+    "Enforced strict Valve-asset boundary in validatePublicGuideData() and buildExportRecipe(), rejecting raw JS bodies, verbatim CSS blocks, and SVG markup before writing outputs.",
+    "Used an inverted-index dual-bundle matcher (translating Vite CSS hashes to semantic CSS keys) to match thousands of unnamed JS exports across Webpack -> Vite in milliseconds, with optional --save-webpack-baseline / --webpack-baseline caching.",
+    "Filtered generated protobuf message classes and private _-prefixed method noise from inferred helpers to keep data.json crisp (~11 MB raw, virtualized to ~16 DOM rows in browser)."
+  ],
+  "results": {
+    "unit_tests": "All 74 Bun tests pass; Python unittest and ty check verified clean.",
+    "live_verification_beta_1795048523": {
+      "cssModules": 547,
+      "cssClasses": 11097,
+      "cssMatched": 9677,
+      "cssUnmatched": 1420,
+      "plainClasses": 2278,
+      "exports": 10119,
+      "verifiedExports": 80,
+      "inferredExports": 4092,
+      "unmatchedExports": 5947,
+      "webpackMatchedExports": 2644,
+      "icons": 493,
+      "chunks": 491,
+      "browser_smoke": "Verified in headless Chrome 150: #comp/SliderField deep-link, 16-row virtualization over 22,747 searchable items, omnibox Vite-hash search (cpMYQEmzrwE- -> Keyboard.Keyboard), cross-linked drawer, and CSS Paste Translator."
+    }
+  }
+}

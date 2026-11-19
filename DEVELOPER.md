@@ -247,6 +247,20 @@ The workflow closes reports by itself, with a comment that links the run:
 - A pre-upgrade report closes when the pre-upgrade check passes on that branch with any `@decky/ui` version. A newer npm `latest` makes the older report moot. When the fork locks the npm `latest`, the locked browser check counts as the pre-upgrade check.
 - A copies report closes when the copies match the fork again, after you update `LOADER`.
 
+## Generate the Vite/Rolldown semantic developer guide
+
+`tools/dev_guide.ts` builds an interactive, virtualized HTML developer guide styled with Valve's Steam Deck / SteamUI color guide (`index.html` + `data.json`, plus optional `--single-file` offline HTML). It maps Steam Deck `publicbeta` Vite/Rolldown components, stores, `IconsModule` icons, and CSS classes back to semantic names and legacy pre-Vite Webpack equivalents (`1794536281`).
+
+```sh
+CHROME=/path/to/chrome bun tools/dev_guide.ts \
+  --mapping-data "$scratch/steamui-watch-mapping-data" \
+  --out-dir "$scratch/guide" \
+  --single-file docs/local/steamui-vite-dev-guide.html \
+  --save-webpack-baseline "$scratch/webpack-baseline.json"
+```
+
+On later runs, pass `--webpack-baseline "$scratch/webpack-baseline.json"` to reuse the metadata-only pre-Vite fingerprint baseline without re-booting the Webpack bundle. Outputs are validated by `validatePublicGuideData()` before writing and contain strict metadata and copy-paste recipes only (zero raw Valve JS bodies, verbatim CSS declarations, or SVGs).
+
 ## Troubleshooting
 
 - **"is not a CSSLoader-Mappings checkout":** pass the path to the `mapping-data` checkout, not this source checkout.
