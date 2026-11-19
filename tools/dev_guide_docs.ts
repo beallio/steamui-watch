@@ -303,6 +303,18 @@ const EXTRA_PLACEMENTS: Record<string, PlacementZone[]> = {
   SectionHeader: ["settings-panel", "qam-drawer"],
   SegmentedCharacterInput: ["modal-overlay", "settings-panel"],
   CalloutMessage: ["settings-panel", "qam-drawer", "modal-overlay"],
+  CompoundSlider: ["qam-drawer", "settings-panel"],
+  DialogTwoButton: ["modal-overlay", "footer-bar"],
+  DialogThreeButton: ["modal-overlay", "footer-bar"],
+  DropDownControlButton: ["qam-drawer", "settings-panel", "context-menu"],
+  DropDownLabelDescription: ["context-menu", "settings-panel", "qam-drawer"],
+  DialogReorderableList: ["settings-panel", "qam-drawer", "modal-overlay"],
+  PagedSettings: ["left-sidebar", "settings-panel", "main-content"],
+  GamepadPage: ["main-content", "top-bar", "footer-bar"],
+  CollapsibleContent: ["main-content", "qam-drawer", "settings-panel"],
+  ExpandableOverflow: ["main-content", "qam-drawer", "modal-overlay"],
+  SquareActionButton: ["main-content", "qam-drawer", "modal-overlay"],
+  SteamAvatar: ["top-bar", "qam-drawer", "main-content"],
 };
 
 const AREA_TO_PLACEMENTS: Record<string, PlacementZone[]> = {

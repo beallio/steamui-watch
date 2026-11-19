@@ -1,6 +1,6 @@
 {
   "name": "@beallio/decky-extras",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Steam UI components unavailable from the public @decky/ui API, discovered from validated finder data.",
   "main": "index.js",
   "module": "index.js",

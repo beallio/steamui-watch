@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "revision": 2,
+  "revision": 3,
   "components": {
     "RadioButton": { "title": "Radio button", "description": "One option of a radio group.", "find": [[{ "text": "\"RadioButton\"" }]] },
     "RadioGroup": { "title": "Radio group", "description": "Single choice from a few options, drawn as a segmented control.", "find": [[{ "text": "\"Shared_Radio_Group\"" }]] },
@@ -22,6 +22,18 @@
     "WarningBox": { "title": "Warning box", "description": "Warning or error message box.", "find": [[{ "member": "WarningBox" }, { "text": "rightColumn:" }], [{ "member": "WarningBox" }, { "text": "==\"warning\"" }], [{ "member": "WarningBox" }, { "text": "==\"error\"" }]] },
     "SectionHeader": { "title": "Section header", "description": "Header with an optional rule.", "find": [[{ "member": "SectionHeader" }, { "text": "noLeftPadding:" }], [{ "text": "showRule" }]] },
     "SegmentedCharacterInput": { "title": "Segmented character input", "description": "Code entry with one box per character.", "find": [[{ "member": "SegmentedCharacterInput" }, { "text": "backupCode:" }], [{ "member": "SegmentedCharacterInput" }, { "text": "allowCharacter:" }], [{ "member": "SegmentedCharacterInput" }, { "text": "previousElementSibling" }]] },
-    "CalloutMessage": { "title": "Callout message", "description": "Attention callout.", "find": [[{ "member": "CalloutMessage" }]] }
+    "CalloutMessage": { "title": "Callout message", "description": "Attention callout.", "find": [[{ "member": "CalloutMessage" }]] },
+    "CompoundSlider": { "title": "Compound slider", "description": "Multi-handle or grouped sub-slider control for range or paired settings.", "find": [[{ "text": "\"CompoundSliderSubSliderUpper\"" }]] },
+    "DialogTwoButton": { "title": "Dialog two-button bar", "description": "Standard Steam OK and Cancel modal button row.", "find": [[{ "text": "\"#Button_Confirm\"" }], [{ "text": "\"#Button_Cancel\"" }], [{ "member": "className" }]] },
+    "DialogThreeButton": { "title": "Dialog three-button bar", "description": "Three-action modal button row with Confirm, Update, and Cancel buttons.", "find": [[{ "text": "\"#Button_Confirm\"" }], [{ "text": "\"#Button_Update\"" }], [{ "text": "\"#Button_Cancel\"" }]] },
+    "DropDownControlButton": { "title": "Dropdown control button", "description": "Standalone Steam dropdown trigger button with animated down-arrow chevron.", "find": [[{ "text": "\"DialogDropDown_CurrentDisplay\"" }], [{ "text": "arrowClassName:" }]] },
+    "DropDownLabelDescription": { "title": "Dropdown label & description", "description": "Rich two-line dropdown option layout with optional icon and upper/lower descriptions.", "find": [[{ "member": "upperDescriptionVisibility" }], [{ "member": "iconVisibility" }]] },
+    "DialogReorderableList": { "title": "Dialog reorderable list", "description": "Valve native drag-and-drop reorderable list container.", "find": [[{ "text": "\"DialogReorderableList\"" }]] },
+    "PagedSettings": { "title": "Paged settings", "description": "Multi-page Steam settings layout with left navigation list and optional bottom controls.", "find": [[{ "text": "\"DialogContentTransition\"" }], [{ "text": "\"PageListColumn\"" }], [{ "member": "startingPage" }]] },
+    "GamepadPage": { "title": "Gamepad page", "description": "Full-screen Steam Deck page wrapper with header/footer padding and content max-width.", "find": [[{ "text": "\"--gamepad-page-content-max-width\"" }]] },
+    "CollapsibleContent": { "title": "Collapsible content", "description": "Animated height-measuring expand/collapse container.", "find": [[{ "text": "onCollapseStarted()" }], [{ "member": "suppressTransition" }], [{ "text": "setBoxHeight()" }]] },
+    "ExpandableOverflow": { "title": "Expandable overflow box", "description": "Overflow-clamped container with Show More / Show Less toggle button.", "find": [[{ "text": "\"#OverflowBox_Action_Collapse\"" }], [{ "text": "\"#OverflowBox_Action_Expand\"" }]] },
+    "SquareActionButton": { "title": "Square action button", "description": "Versatile Steam action button supporting primary/secondary variants, square mode, and flex-grow.", "find": [[{ "text": "showFocusRing:" }], [{ "text": "square:" }], [{ "text": "grow:" }], [{ "binding": "variant" }]] },
+    "SteamAvatar": { "title": "Steam avatar", "description": "Native Steam user avatar frame with online/in-game status indicator.", "find": [[{ "text": "\"avatarHolder\"" }], [{ "text": "\"avatarStatus\"" }], [{ "text": "strAvatarURL:" }]] }
   }
 }
