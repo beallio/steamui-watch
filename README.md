@@ -7,9 +7,10 @@ Tools to help Steam Deck themes and Decky plugins keep working after Steam updat
 - **Theme updates:** publishes translation lists for CSS Loader. Themes use Steam's internal names to change how the screen looks. Steam updates can change those names; the lists connect older names to newer ones.
 - **Decky warnings:** checks for changes that could break Decky Loader or its plugin library. A warning from a beta version can give maintainers time to fix a problem before it reaches the normal Steam version.
 - **Steam control catalog:** lets plugin authors look at and try Steam's buttons, sliders, menus, icons, and other screen parts on their own computer. It also includes some controls that Decky's plugin library does not offer by name.
-- **Extra controls for plugins:** a separate package gives plugin authors 21 more Steam controls. Plugins carry this package themselves, so users can use standard Decky Loader. It downloads updated search data and keeps a working local copy if the download fails.
+- **Vite/Rolldown developer guide:** publishes a searchable, metadata-only [developer guide](https://beallio.github.io/steamui-watch/guide/) mapping Steam Deck beta Vite CSS hashes, components, stores, icons, and chunks back to semantic names and legacy Webpack locations (plus a CSS Paste Translator and Steam Deck screen placement map). A local `--with-previews` mode adds live rendered component and SVG icon previews without publishing Valve assets.
+- **Extra controls for plugins:** a separate package gives plugin authors 33 more Steam controls. Plugins carry this package themselves, so users can use standard Decky Loader. It downloads updated search data and keeps a working local copy if the download fails.
 
-The theme lists and Decky checks run automatically. The catalog is a local tool, not a public website or a plugin to install on a Deck.
+The theme lists, developer guide, and Decky checks run automatically. Visual previews and the catalog stay local tools, not public websites or plugins to install on a Deck.
 
 ## Do I need to do anything?
 
@@ -17,10 +18,11 @@ If you use a current version of [beallio's CSS Loader](https://github.com/bealli
 
 The standard CSS Loader uses the DeckThemes team's lists instead, not these.
 
-The lists are public:
+The lists and guide are public:
 
 - [Stable list](https://beallio.github.io/steamui-watch/stable.json), for the normal Steam Deck version
 - [Beta list](https://beallio.github.io/steamui-watch/beta.json), for the Steam Deck beta
+- [Vite/Rolldown Developer Guide](https://beallio.github.io/steamui-watch/guide/), semantic class/component reference and CSS paste translator ([JSON data](https://beallio.github.io/steamui-watch/guide/data.json))
 
 You do not need to run this tool to use the lists. Decky warnings are for maintainers; they do not install fixes on your Deck.
 
