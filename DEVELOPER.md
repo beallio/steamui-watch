@@ -261,6 +261,8 @@ CHROME=/path/to/chrome bun tools/dev_guide.ts \
 
 On later runs, pass `--webpack-baseline "$scratch/webpack-baseline.json"` to reuse the metadata-only pre-Vite fingerprint baseline without re-booting the Webpack bundle. Outputs are validated by `validatePublicGuideData()` before writing and contain strict metadata and copy-paste recipes only (zero raw Valve JS bodies, verbatim CSS declarations, or SVGs).
 
+For a local-only build with live rendered Steam Deck component previews (`ButtonItem`, `ToggleField`, `SliderField`, `ConfirmModal`, `decky-extras`, etc.) and all `IconsModule` SVG icons, pass `--with-previews` and keep the output in git-ignored `docs/local/` (never publish `--with-previews` output, as it embeds Valve's CSS and SVGs).
+
 ## Troubleshooting
 
 - **"is not a CSSLoader-Mappings checkout":** pass the path to the `mapping-data` checkout, not this source checkout.

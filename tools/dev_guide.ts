@@ -19,6 +19,7 @@ import { parseArgs } from "node:util";
 import extrasData from "../packages/decky-extras/extras.json";
 import { matchExtras, parseManifest } from "../packages/decky-extras/match";
 import { applyUiCompat } from "./apply_ui_compat";
+import { CANDIDATES, ENTRIES, selectorUsesClass } from "./decky_catalog";
 import {
   analyzeViteChunkAst,
   buildCssIndex,
@@ -26,6 +27,7 @@ import {
   extractCssClassesFromStylesheets,
   isViteHash,
   matchWebpackToVite,
+  type CapturedPreviews,
   type ChunkAstAnalysis,
   type VerifiedRuntimeEntry,
   type ViteRuntimeExport,
@@ -300,17 +302,160 @@ function buildRuntimeCollectorScript(files: string[], isVite: boolean): string {
   })(${JSON.stringify(files)}, ${JSON.stringify(extras)}, ${JSON.stringify(isVite)})`;
 }
 
+function buildPreviewCollectorScript(): string {
+  return `(async (entries, candidates, manifest) => {
+    const w = window;
+    w.__stubInert = true;
+    const W = await import("/probe/webpack.js");
+    const L = await import("/probe/index.js");
+    const R = w.SP_REACT, D = w.SP_REACTDOM;
+    if (!R || !D) return { components: {}, icons: {}, css: "" };
+
+    const src = (v) => {
+      const f = v?.render ?? v?.type ?? v;
+      try { return typeof f === "function" ? Function.prototype.toString.call(f) : ""; } catch { return ""; }
+    };
+    const where = new Map();
+    for (const [id, m] of W.modules) {
+      if (!m || (typeof m !== "object" && typeof m !== "function")) continue;
+      for (const k of Object.keys(m)) {
+        let v; try { v = m[k]; } catch { continue; }
+        if (v && (typeof v === "object" || typeof v === "function")) {
+          if (!where.has(v)) where.set(v, []);
+          where.get(v).push(id + ":" + k);
+        }
+      }
+    }
+    const findAll = (test) => [...where.keys()].filter((v) => { const s = src(v); return s !== "" && test(s); });
+    const one = (test) => { const all = findAll(test); return all.length === 1 ? all[0] : all[0]; };
+    const createRoot = D.createRoot
+      ?? W.findModule((m) => typeof m?.createRoot === "function" && Object.keys(m).length === 1)?.createRoot
+      ?? W.findModule((m) => typeof m?.createRoot === "function")?.createRoot;
+    if (typeof createRoot !== "function") return { components: {}, icons: {}, css: "" };
+
+    const provider = Object.values(W.CommonUIModule ?? {}).find((v) => typeof v === "function" && /SliderField:/.test(src(v)) && /\\.Provider/.test(src(v)))
+      ?? [...where.keys()].find((v) => typeof v === "function" && /SliderField:/.test(src(v)) && /\\.Provider/.test(src(v)));
+    const Router = Object.values(L.ReactRouter ?? {}).find((v) => /history\\.location/.test(src(v)) && /_isMounted/.test(src(v)));
+    const memoryHistory = one((s) => s.includes("initialEntries") && s.includes("getUserConfirmation"));
+    const QueryProvider = one((s) => s.length < 600 && s.includes("client:") && s.includes(".mount()"));
+    const QueryClient = one((s) => s.startsWith("class") && s.includes("getQueryCache(){"));
+
+    const h = R.createElement;
+    const withRouter = (el) => (Router && memoryHistory ? h(Router, { history: memoryHistory({ initialEntries: ["/"] }) }, el) : el);
+    const withQuery = (el) => (QueryProvider && QueryClient ? h(QueryProvider, { client: new QueryClient() }, el) : el);
+    const on = () => () => {};
+    const Stateful = ({ initial, render }) => {
+      const [value, setValue] = R.useState(initial);
+      return render(value, (...args) => setValue(args[0]?.target ? args[0].target.value : args[0]));
+    };
+    const S = (_name, initial, render) => h(Stateful, { initial, render });
+    class Boundary extends R.Component {
+      state = { e: null };
+      static getDerivedStateFromError(e) { return { e }; }
+      render() { return this.state.e ? h("pre", { "data-error": "" }, String(this.state.e?.message ?? this.state.e)) : this.props.children; }
+    }
+
+    const matchExtras = ${matchExtras};
+    const found = matchExtras(W.modules, manifest);
+    const K = {};
+    for (const c of candidates) {
+      const all = found[c.id] ?? [];
+      if (all.length === 1) K[c.id] = all[0];
+    }
+
+    const wrap = (el) => h(Boundary, null, provider ? h(provider, null, el) : el);
+    const run = (make, C) => () => new Function("h", "L", "K", "C", "withRouter", "withQuery", "S", "on", "return " + make)(h, L, K, C, withRouter, withQuery, S, on);
+
+    const draw = async (make, width) => {
+      const host = document.createElement("div");
+      host.style.cssText = "position:absolute;left:0;top:0;width:" + width + "px";
+      document.body.appendChild(host);
+      const root = createRoot(host);
+      const quiet = console.error; console.error = () => {};
+      let error = null;
+      try { D.flushSync(() => root.render(wrap(make()))); }
+      catch (e) { error = String(e).slice(0, 300); }
+      await new Promise((r) => setTimeout(r, 40));
+      console.error = quiet;
+      const html = host.innerHTML;
+      root.unmount(); host.remove();
+      const caught = html.match(/<pre data-error="">([\\s\\S]*?)<\\/pre>/)?.[1];
+      return { html, width, error: error ?? (caught === undefined ? null : caught.slice(0, 300)) };
+    };
+
+    const components = {};
+    for (const e of entries) {
+      if (e.skip || !e.make) {
+        if (e.skip) components[e.name] = { html: "", width: e.width ?? 360, note: e.skip, error: null };
+        continue;
+      }
+      const r = await draw(run(e.make), e.width ?? 360);
+      components[e.name] = { ...r, ...(e.note ? { note: e.note } : {}) };
+    }
+    for (const c of candidates) {
+      if (!c.make || !K[c.id]) continue;
+      const r = await draw(run(c.make, K[c.id]), c.width ?? 360);
+      components[c.id] = r;
+    }
+
+    const icons = {};
+    const iconsMod = L.IconsModule ?? W.IconsModule ?? {};
+    for (const name of Object.keys(iconsMod).sort()) {
+      const fn = iconsMod[name];
+      if (!fn) continue;
+      const directional = /direction:[\\w$]+/.test(src(fn)) && /case["'\`]up["'\`]/.test(src(fn));
+      const r = await draw(() => R.createElement(fn, directional ? { direction: "right" } : null), 48);
+      if (!r.error && r.html.includes("<svg")) icons[name] = r.html;
+    }
+
+    // Collect minimal Steam CSS rules that match rendered class names + :root CSS variables + referenced @keyframes
+    const uses = ${selectorUsesClass};
+    const used = new Set();
+    const allHtml = Object.values(components).map((r) => r.html).join("") + Object.values(icons).join("");
+    for (const m of allHtml.matchAll(/class="([^"]*)"/g)) {
+      for (const cls of m[1].split(/\\s+/)) if (cls) used.add(cls);
+    }
+    const animations = new Set();
+    const keep = (rules) => [...rules].flatMap((r) => {
+      if (r instanceof CSSStyleRule) {
+        const isRootVars = /^:root\\b/.test(r.selectorText) && r.style.cssText.includes("--");
+        if (!uses(r.selectorText, used) && !isRootVars) return [];
+        for (const a of (r.style.animationName || "").split(/[\\s,]+/)) if (a) animations.add(a);
+        return [r.cssText];
+      }
+      if (r instanceof CSSMediaRule || r instanceof CSSSupportsRule) {
+        const inner = keep(r.cssRules);
+        return inner.length ? ["@" + (r instanceof CSSMediaRule ? "media" : "supports") + " " + r.conditionText + "{" + inner.join("\\n") + "}"] : [];
+      }
+      return [];
+    });
+    const sheets = [...document.styleSheets];
+    const cssRules = sheets.flatMap((s) => { try { return keep(s.cssRules); } catch { return []; } });
+    const frames = sheets.flatMap((s) => {
+      try {
+        return [...s.cssRules].filter((r) => r instanceof CSSKeyframesRule && animations.has(r.name)).map((r) => r.cssText);
+      } catch { return []; }
+    });
+    return { components, icons, css: [...cssRules, ...frames].join("\\n") };
+  })(${JSON.stringify(ENTRIES)}, ${JSON.stringify(CANDIDATES)}, ${JSON.stringify(extras)})`;
+}
+
 async function runBundleRuntimeProbe(opts: {
   root: string;
   work: string;
   deckyUiDir: string;
   chrome: string;
-}): Promise<{ isVite: boolean; data: PageRuntimeCollection }> {
-  const files = await buildProbe(opts.root, opts.work, opts.deckyUiDir);
+  withPreviews?: boolean;
+}): Promise<{ isVite: boolean; data: PageRuntimeCollection; previews?: CapturedPreviews }> {
+  const files = await buildProbe(opts.root, opts.work, opts.deckyUiDir, opts.withPreviews ? ["index.js"] : []);
   const page = await openSteamPage(opts.root, opts.work, opts.chrome);
   try {
     const data = await page.evaluate<PageRuntimeCollection>(buildRuntimeCollectorScript(files, page.isVite));
-    return { isVite: page.isVite, data };
+    let previews: CapturedPreviews | undefined;
+    if (opts.withPreviews) {
+      previews = await page.evaluate<CapturedPreviews>(buildPreviewCollectorScript());
+    }
+    return { isVite: page.isVite, data, previews };
   } finally {
     await page.close();
   }
@@ -383,6 +528,7 @@ async function main() {
       "decky-ui": { type: "string", default: resolve(repo, "../decky-loader/frontend/node_modules/@decky/ui") },
       "rollup-config": { type: "string" },
       chrome: { type: "string", default: process.env.CHROME ?? "google-chrome" },
+      "with-previews": { type: "boolean", default: false },
       keep: { type: "boolean", default: false },
     },
   });
@@ -453,13 +599,19 @@ async function main() {
     }
 
     console.log("Booting Beta Vite bundle in headless Chrome...");
+    const withPreviews = Boolean(values["with-previews"]);
     const betaProbe = await runBundleRuntimeProbe({
       root: betaRoot,
       work: join(work, "beta-chrome"),
       deckyUiDir: betaUiDir,
       chrome: values.chrome!,
+      withPreviews,
     });
     console.log(`  Beta runtime: ${betaProbe.data.moduleCount} modules, ${Object.keys(betaProbe.data.verified).length} verified finders, ${betaProbe.data.exports.length} runtime exports, ${betaProbe.data.icons.length} icons`);
+    if (betaProbe.previews) {
+      const okComps = Object.values(betaProbe.previews.components).filter((c) => c.html && !c.error).length;
+      console.log(`  Visual previews captured: ${okComps} components, ${Object.keys(betaProbe.previews.icons).length} SVG icons, ${Math.round(betaProbe.previews.css.length / 1024)} KB scoped Steam CSS`);
+    }
 
     // 4. Load or generate Webpack baseline (1794536281)
     let webpackBaseline: WebpackBaselineFile;
@@ -555,9 +707,10 @@ async function main() {
       runtimeExports: viteRuntimeExports,
       chunkAnalyses,
       webpackMatches,
+      previews: betaProbe.previews,
     });
 
-    const violations = validatePublicGuideData(guideData);
+    const violations = validatePublicGuideData(guideData, { allowPreviews: withPreviews });
     if (violations.length) {
       throw new Error(`Public Valve-asset boundary validation failed:\n${violations.slice(0, 10).join("\n")}`);
     }

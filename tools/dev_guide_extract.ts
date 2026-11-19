@@ -19,6 +19,7 @@ import {
   type MigrationStatus,
   type SourcePackage,
 } from "./dev_guide_schema";
+import { describeCssModule, describeExport } from "./dev_guide_docs";
 
 export const VITE_HASH_RE = /^_?[A-Za-z0-9_-]{11}-$/;
 const CSS_COMMENT_RE = /\/\*[\s\S]*?\*\//g;
@@ -228,6 +229,7 @@ export function buildCssIndex(opts: {
       if (!hashToSemantic.has(hash)) hashToSemantic.set(hash, prop);
     }
 
+    const modDoc = describeCssModule(modName, featureArea, keys);
     const modEntry: CssModuleEntry = {
       id: `mod:${modId}`,
       moduleId: modId,
@@ -237,7 +239,18 @@ export function buildCssIndex(opts: {
       matchedCount: classIds.length,
       classes: classIds,
       usedBy: [],
+      description: modDoc.description,
+      placements: modDoc.placements,
     };
+    for (const cid of classIds) {
+      const cEntry = classById.get(cid);
+      if (cEntry) {
+        cEntry.placements = modDoc.placements;
+        cEntry.description = cEntry.isKeyframe
+          ? `CSS @keyframes animation "${cEntry.semanticName}" in ${modName} (${featureArea}).`
+          : `Styles the "${cEntry.semanticName}" element inside ${modName} (${featureArea}).`;
+      }
+    }
     cssModules.push(modEntry);
     moduleById.set(modEntry.id, modEntry);
   }
@@ -1032,6 +1045,12 @@ function extractSymbolFromAt(loc: string): { chunk: string; sym: string } | null
   return m ? { chunk: m[1], sym: m[2] } : null;
 }
 
+export interface CapturedPreviews {
+  components: Record<string, { html: string; width: number; note?: string; error?: string | null }>;
+  icons: Record<string, string>;
+  css: string;
+}
+
 export function buildGuideData(inputs: {
   betaMeta: GuideData["beta"];
   webpackMeta: GuideData["webpackBaseline"];
@@ -1041,8 +1060,9 @@ export function buildGuideData(inputs: {
   runtimeExports: ViteRuntimeExport[];
   chunkAnalyses: Map<string, ChunkAstAnalysis>;
   webpackMatches: Map<string, WebpackMatch>;
+  previews?: CapturedPreviews;
 }): GuideData {
-  const { betaMeta, webpackMeta, cssIndex, verifiedRuntime, icons, runtimeExports, chunkAnalyses, webpackMatches } = inputs;
+  const { betaMeta, webpackMeta, cssIndex, verifiedRuntime, icons, runtimeExports, chunkAnalyses, webpackMatches, previews } = inputs;
 
   // Map each Vite runtime location `esm:chunk:sym` to any verified name claiming that object.
   const atToVerified = new Map<string, { label: string; entry: VerifiedRuntimeEntry }>();
@@ -1203,6 +1223,22 @@ export function buildGuideData(inputs: {
       strings: item.runtime?.strings ?? item.verified?.entry.strings,
     });
 
+    const cssModuleNames = [...cssModuleIds]
+      .map((mid) => cssIndex.moduleById.get(mid)?.name ?? "")
+      .filter(Boolean);
+    const doc = describeExport({
+      name,
+      kind,
+      sourcePackage,
+      featureArea,
+      props,
+      storeFields,
+      steamClientApis,
+      cssModuleNames,
+    });
+    const prev = previews?.components[name];
+    const hasPreviewHtml = Boolean(prev?.html && !prev.error);
+
     const entry: JsExportEntry = {
       id,
       name,
@@ -1223,6 +1259,10 @@ export function buildGuideData(inputs: {
       cssClasses: [...cssClassIds].sort(),
       cssModules: [...cssModuleIds].sort(),
       recipe,
+      description: doc.description,
+      placements: doc.placements,
+      ...(hasPreviewHtml ? { previewHtml: prev!.html, previewWidth: prev!.width } : {}),
+      ...(prev?.note ? { previewNote: prev.note } : {}),
     };
 
     exportsList.push(entry);
@@ -1238,6 +1278,49 @@ export function buildGuideData(inputs: {
     }
   }
 
+  // Include any @decky/ui library-made components that rendered a preview (e.g. DropdownItem, ReorderableList)
+  if (previews) {
+    const existingNames = new Set(exportsList.map((e) => e.name));
+    for (const [compName, prev] of Object.entries(previews.components)) {
+      if (existingNames.has(compName) || !prev.html || prev.error) continue;
+      const doc = describeExport({
+        name: compName,
+        kind: "component",
+        sourcePackage: "@decky/ui",
+        featureArea: "CommonUI",
+        props: [],
+        storeFields: [],
+        steamClientApis: [],
+        cssModuleNames: [],
+      });
+      exportsList.push({
+        id: makeUniqueId("comp", compName),
+        name: compName,
+        kind: "component",
+        confidence: "verified",
+        evidence: ["@decky/ui (library wrapper)"],
+        featureArea: "CommonUI",
+        viteAt: ["@decky/ui"],
+        chunk: "@decky/ui",
+        webpackAt: [],
+        migration: "unchanged",
+        sourcePackage: "@decky/ui",
+        props: [],
+        storeFields: [],
+        methods: [],
+        steamClientApis: [],
+        cssClasses: [],
+        cssModules: [],
+        recipe: `import { ${compName} } from "@decky/ui";`,
+        description: doc.description,
+        placements: doc.placements,
+        previewHtml: prev.html,
+        previewWidth: prev.width,
+        ...(prev.note ? { previewNote: prev.note } : {}),
+      });
+    }
+  }
+
   for (const c of cssIndex.cssClasses) c.usedBy.sort();
   for (const m of cssIndex.cssModules) m.usedBy.sort();
 
@@ -1247,12 +1330,16 @@ export function buildGuideData(inputs: {
 
   // Build IconEntry list
   const iconEntries: IconEntry[] = icons
-    .map((ic) => ({
-      ...ic,
-      recipe: ic.directional
-        ? `import { IconsModule } from "@decky/ui"; // <IconsModule.${ic.name} direction="right" />`
-        : `import { IconsModule } from "@decky/ui"; // <IconsModule.${ic.name} />`,
-    }))
+    .map((ic) => {
+      const svg = previews?.icons[ic.name];
+      return {
+        ...ic,
+        recipe: ic.directional
+          ? `import { IconsModule } from "@decky/ui"; // <IconsModule.${ic.name} direction="right" />`
+          : `import { IconsModule } from "@decky/ui"; // <IconsModule.${ic.name} />`,
+        ...(svg ? { previewSvg: svg } : {}),
+      };
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
 
   // Build ChunkEntry summaries
@@ -1307,6 +1394,8 @@ export function buildGuideData(inputs: {
   });
 
   const cssMatched = cssIndex.cssClasses.filter((c) => c.confidence !== "unmatched").length;
+  const renderedPreviews = exportsList.filter((e) => Boolean(e.previewHtml)).length;
+  const renderedIcons = iconEntries.filter((i) => Boolean(i.previewSvg)).length;
   const stats = {
     cssModules: cssIndex.cssModules.length,
     cssClasses: cssIndex.cssClasses.length,
@@ -1320,6 +1409,8 @@ export function buildGuideData(inputs: {
     webpackMatchedExports: exportsList.filter((e) => e.webpackAt.length > 0).length,
     icons: iconEntries.length,
     chunks: chunks.length,
+    ...(renderedPreviews ? { renderedPreviews } : {}),
+    ...(renderedIcons ? { renderedIcons } : {}),
   };
 
   return {
@@ -1335,5 +1426,6 @@ export function buildGuideData(inputs: {
     exports: exportsList,
     icons: iconEntries,
     chunks,
+    ...(previews?.css ? { previewCss: previews.css } : {}),
   };
 }

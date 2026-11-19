@@ -2,8 +2,24 @@
   const ROW_H = 54;
   const BUFFER = 12;
 
+  const PLACEMENT_LABELS = {
+    "top-bar": "Top Header Bar",
+    "left-sidebar": "Left Navigation Sidebar",
+    "main-content": "Main Viewport (Library / Store)",
+    "qam-drawer": "Right Quick Access Menu (QAM)",
+    "settings-panel": "Settings / Plugin Panels",
+    "footer-bar": "Bottom Footer Bar",
+    "modal-overlay": "Center Modal Dialog",
+    "context-menu": "Floating Context Menu",
+    "virtual-keyboard": "Bottom Virtual Keyboard",
+    "toast-overlay": "Notification Toast",
+    "background-store": "Background Runtime Store",
+  };
+
   const state = {
     data: null,
+    hasPreviews: false,
+    hasIconSvgs: false,
     tab: "all",
     area: "all",
     conf: new Set(),
@@ -23,8 +39,37 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+  function renderDeckMap(placements) {
+    const set = new Set(placements || []);
+    if (!set.size) return "";
+    const on = (z) => (set.has(z) ? " on" : "");
+    const mainOn = set.has("main-content") || set.has("settings-panel") ? " on" : "";
+    const legend = [...set].map((z) => `<span class="pill">${esc(PLACEMENT_LABELS[z] || z)}</span>`).join("");
+    return `
+      <div class="drawer-section">
+        <h3>Where It Lives (Steam Deck Gaming Mode)</h3>
+        <div class="deck-map">
+          <div class="deck-screen">
+            <div class="dm-zone dm-top${on("top-bar")}">Top Bar</div>
+            <div class="dm-zone dm-left${on("left-sidebar")}">Sidebar</div>
+            <div class="dm-zone dm-main${mainOn}">${set.has("settings-panel") ? "Main / Settings" : "Main Content"}</div>
+            <div class="dm-zone dm-qam${on("qam-drawer")}">QAM •••</div>
+            <div class="dm-zone dm-footer${on("footer-bar")}">Footer Prompts</div>
+            <div class="dm-float dm-modal${on("modal-overlay")}">Modal Dialog</div>
+            <div class="dm-float dm-ctx${on("context-menu")}">Context Menu</div>
+            <div class="dm-float dm-kbd${on("virtual-keyboard")}">Virtual Keyboard</div>
+            <div class="dm-float dm-toast${on("toast-overlay")}">Toast</div>
+          </div>
+          <div class="dm-legend">${legend}</div>
+        </div>
+      </div>
+    `;
+  }
+
   function buildSearchIndex(data) {
     state.data = data;
+    state.hasPreviews = data.exports.some((e) => Boolean(e.previewHtml));
+    state.hasIconSvgs = data.icons.some((i) => Boolean(i.previewSvg));
     state.allRows = [];
     state.byKey.clear();
     state.byHash.clear();
@@ -32,6 +77,13 @@
     state.byCssId.clear();
     state.byModId.clear();
     state.byExportId.clear();
+
+    if (data.previewCss && !document.getElementById("steam-preview-css")) {
+      const style = document.createElement("style");
+      style.id = "steam-preview-css";
+      style.textContent = data.previewCss;
+      document.head.insertBefore(style, document.head.firstChild);
+    }
 
     for (const m of data.cssModules) state.byModId.set(m.id, m);
     for (const c of data.cssClasses) {
@@ -49,8 +101,9 @@
     for (const e of data.exports) {
       const cssNames = e.cssClasses.slice(0, 12).map((cid) => state.byCssId.get(cid)?.semanticName || "").filter(Boolean);
       const cssHashes = e.cssClasses.slice(0, 12).map((cid) => state.byCssId.get(cid)?.hash || "").filter(Boolean);
+      const placeWords = (e.placements || []).map((p) => PLACEMENT_LABELS[p] || p);
       const search = [
-        e.name, e.id, e.kind, e.sourcePackage, e.featureArea, e.chunk,
+        e.name, e.id, e.kind, e.sourcePackage, e.featureArea, e.chunk, e.description || "", ...placeWords,
         ...e.viteAt, ...e.webpackAt, ...e.props, ...e.storeFields, ...e.methods, ...e.steamClientApis, ...e.evidence, ...cssNames, ...cssHashes,
       ].join(" ").toLowerCase();
       addRow({
@@ -59,7 +112,7 @@
         tab: e.kind === "store" ? "stores" : "components",
         kindLabel: e.kind,
         name: e.name,
-        sub: e.sourcePackage + " · " + e.featureArea + (e.props.length ? " · " + e.props.length + " props" : "") + (e.cssClasses.length ? " · " + e.cssClasses.length + " CSS" : ""),
+        sub: e.description || (e.sourcePackage + " · " + e.featureArea),
         code: e.viteAt[0] || e.chunk,
         meta: e.webpackAt[0] ? "WP: " + e.webpackAt[0] : (e.evidence[0] || ""),
         area: e.featureArea,
@@ -79,13 +132,13 @@
         tab: "css-modules",
         kindLabel: "css-mod",
         name: m.name,
-        sub: "Module " + m.moduleId + " · " + m.featureArea,
+        sub: m.description || ("Module " + m.moduleId + " · " + m.featureArea),
         code: m.classCount + " classes",
         meta: m.usedBy.length ? "Used by " + m.usedBy.length + " export(s)" : "Stylesheet module",
         area: m.featureArea,
         conf: "verified",
         mig: "changed",
-        search: [m.name, m.moduleId, m.featureArea, ...sample].join(" ").toLowerCase(),
+        search: [m.name, m.moduleId, m.featureArea, m.description || "", ...sample].join(" ").toLowerCase(),
         item: m,
         type: "css-module",
       });
@@ -99,13 +152,13 @@
         tab: "css-classes",
         kindLabel: c.isKeyframe ? "keyframe" : "css",
         name: label,
-        sub: c.featureArea + (c.usedBy.length ? " · used by " + c.usedBy.length : ""),
+        sub: c.description || (c.featureArea + (c.usedBy.length ? " · used by " + c.usedBy.length : "")),
         code: c.hash,
         meta: c.webpackHash ? ("WP: " + c.webpackHash) : (c.migration === "new" ? "New in Vite" : "Unmatched"),
         area: c.featureArea,
         conf: c.confidence,
         mig: c.migration,
-        search: [label, c.hash, c.semanticName || "", c.moduleName, c.moduleId || "", c.webpackHash || "", c.chainId || "", c.featureArea].join(" ").toLowerCase(),
+        search: [label, c.hash, c.semanticName || "", c.moduleName, c.moduleId || "", c.webpackHash || "", c.chainId || "", c.featureArea, c.description || ""].join(" ").toLowerCase(),
         item: c,
         type: "css-class",
       });
@@ -155,15 +208,25 @@
     const s = d.stats;
     const cssPct = s.cssClasses ? ((s.cssMatched / s.cssClasses) * 100).toFixed(1) : "0.0";
     $("build-subtitle").textContent = d.beta.branch + " " + d.beta.version + " (Vite/Rolldown)  ←  Webpack " + d.webpackBaseline.version;
-    $("kpi-strip").innerHTML = [
+    const kpis = [
       `<div class="kpi"><strong>${s.cssMatched.toLocaleString()}</strong> / ${s.cssClasses.toLocaleString()} CSS (${cssPct}%)</div>`,
       `<div class="kpi"><strong>${s.exports.toLocaleString()}</strong> JS Exports (${s.verifiedExports} verified · ${s.inferredExports} inferred)</div>`,
       `<div class="kpi"><strong>${s.webpackMatchedExports.toLocaleString()}</strong> Webpack→Vite Matches</div>`,
-      `<div class="kpi"><strong>${s.icons.toLocaleString()}</strong> Icons</div>`,
-    ].join("");
+      `<div class="kpi"><strong>${s.icons.toLocaleString()}</strong> Icons${s.renderedIcons ? ` (${s.renderedIcons} SVG)` : ""}</div>`,
+    ];
+    if (s.renderedPreviews) {
+      kpis.unshift(`<div class="kpi" style="border-color:var(--gp-blue)"><strong>${s.renderedPreviews}</strong> Live Component Previews</div>`);
+    }
+    $("kpi-strip").innerHTML = kpis.join("");
+
+    const galleryBtn = $("tab-gallery");
+    if (galleryBtn && state.hasPreviews) {
+      galleryBtn.style.display = "";
+    }
 
     const counts = {
       all: state.allRows.length,
+      gallery: d.exports.filter((e) => Boolean(e.previewHtml)).length,
       components: d.exports.filter((e) => e.kind !== "store").length,
       stores: d.exports.filter((e) => e.kind === "store").length,
       "css-modules": d.cssModules.length,
@@ -189,12 +252,89 @@
         state.area = b.getAttribute("data-area") || "all";
         sb.querySelectorAll(".area-btn").forEach((x) => x.classList.toggle("active", x === b));
         if (state.tab === "translate") setTab("all");
-        applyFilters();
+        else applyFilters();
       });
     });
   }
 
+  function matchesTerms(text, terms) {
+    for (const t of terms) if (!text.includes(t)) return false;
+    return true;
+  }
+
+  function renderVisualGallery() {
+    const q = state.query.trim().toLowerCase();
+    const terms = q ? q.split(/\s+/).filter(Boolean) : [];
+    const body = $("gallery-body");
+    const title = $("gallery-title");
+    const note = $("gallery-note");
+
+    if (state.tab === "icons" && state.hasIconSvgs) {
+      const icons = state.data.icons.filter((ic) => {
+        if (!terms.length) return true;
+        return matchesTerms(("icon iconsmodule " + ic.name + " " + ic.viteAt.join(" ")).toLowerCase(), terms);
+      });
+      title.textContent = `Showing ${icons.length.toLocaleString()} of ${state.data.icons.length.toLocaleString()} IconsModule SVG icons`;
+      note.textContent = "Click any icon to copy its <IconsModule.Name /> usage & inspect Vite/Webpack locations";
+      if (!icons.length) {
+        body.innerHTML = `<div class="empty-state">No icons match "${esc(state.query)}".</div>`;
+        return;
+      }
+      body.innerHTML = `<div class="icon-grid">${icons.map((ic) => `
+        <div class="icon-card" data-open="icon:${esc(ic.name)}">
+          <div class="icon-svg-box">${ic.previewSvg || `<span class="mono" style="font-size:10px;color:var(--gp-muted)">N/A</span>`}</div>
+          <div class="icon-svg-label">${esc(ic.name)}</div>
+        </div>
+      `).join("")}</div>`;
+      body.querySelectorAll("[data-open]").forEach((el) => {
+        el.addEventListener("click", () => openDetail(el.getAttribute("data-open")));
+      });
+      return;
+    }
+
+    // Component Visual Gallery
+    const comps = state.data.exports.filter((e) => {
+      if (!e.previewHtml) return false;
+      if (state.area !== "all" && e.featureArea !== state.area) return false;
+      if (state.conf.size && !state.conf.has(e.confidence)) return false;
+      if (terms.length) {
+        const row = state.byKey.get(e.id);
+        if (row && !matchesTerms(row.search, terms)) return false;
+      }
+      return true;
+    });
+    title.textContent = `Showing ${comps.length} rendered Steam Deck components (live DOM + SteamUI CSS from ${state.data.beta.branch} ${state.data.beta.version})`;
+    note.textContent = "Click any component card for Steam Deck screen placement, props, recipe, and semantic CSS classes";
+    if (!comps.length) {
+      body.innerHTML = `<div class="empty-state">No rendered component previews match the current filters.</div>`;
+      return;
+    }
+    body.innerHTML = `<div class="gallery-grid">${comps.map((e) => {
+      const places = (e.placements || []).slice(0, 3).map((p) => `<span class="pill">${esc(PLACEMENT_LABELS[p] || p)}</span>`).join("");
+      return `
+        <article class="comp-card" data-open="${esc(e.id)}">
+          <div class="comp-card-head">
+            <h3 class="comp-card-title">${esc(e.name)}</h3>
+            <span class="badge b-kind">${esc(e.sourcePackage)}</span>
+          </div>
+          ${e.description ? `<p class="comp-card-desc">${esc(e.description)}</p>` : ""}
+          <div class="preview-stage">
+            <div class="preview-inner" style="width:${Math.min(e.previewWidth || 360, 560)}px">${e.previewHtml}</div>
+          </div>
+          <div class="pill-list">${places}</div>
+        </article>
+      `;
+    }).join("")}</div>`;
+    body.querySelectorAll("[data-open]").forEach((el) => {
+      el.addEventListener("click", () => openDetail(el.getAttribute("data-open")));
+    });
+  }
+
   function applyFilters() {
+    if (state.tab === "gallery" || (state.tab === "icons" && state.hasIconSvgs)) {
+      renderVisualGallery();
+      return;
+    }
     const q = state.query.trim().toLowerCase();
     const terms = q ? q.split(/\s+/).filter(Boolean) : [];
     const out = [];
@@ -203,13 +343,7 @@
       if (state.area !== "all" && r.area !== state.area) continue;
       if (state.conf.size && !state.conf.has(r.conf)) continue;
       if (state.mig.size && !state.mig.has(r.mig)) continue;
-      if (terms.length) {
-        let ok = true;
-        for (const t of terms) {
-          if (!r.search.includes(t)) { ok = false; break; }
-        }
-        if (!ok) continue;
-      }
+      if (terms.length && !matchesTerms(r.search, terms)) continue;
       out.push(r);
     }
     state.filtered = out;
@@ -273,7 +407,9 @@
     if (pushHash && row.hashLink && location.hash !== row.hashLink) {
       history.replaceState(null, "", row.hashLink);
     }
-    renderVirtual();
+    if (state.tab !== "gallery" && !(state.tab === "icons" && state.hasIconSvgs) && state.tab !== "translate") {
+      renderVirtual();
+    }
 
     const drawer = $("detail-drawer");
     drawer.classList.add("open");
@@ -290,6 +426,9 @@
         const m = state.byModId.get(mid);
         return `<button class="pill link" data-jump="${esc(mid)}">${esc(m ? `${m.name} (${m.moduleId})` : mid)}</button>`;
       }).join("");
+      const previewBlock = it.previewHtml
+        ? `<div class="drawer-section"><h3>Visual Preview</h3><div class="preview-stage"><div class="preview-inner" style="width:${Math.min(it.previewWidth || 360, 400)}px">${it.previewHtml}</div></div>${it.previewNote ? `<div class="row-sub" style="margin-top:5px">${esc(it.previewNote)}</div>` : ""}</div>`
+        : (it.previewNote ? `<div class="drawer-section"><h3>Visual Preview</h3><div class="row-sub">${esc(it.previewNote)}</div></div>` : "");
       body = `
         <div class="drawer-head">
           <div>
@@ -302,6 +441,9 @@
           </div>
           <button class="drawer-close" id="close-drawer">Close</button>
         </div>
+        ${it.description ? `<div class="desc-box">${esc(it.description)}</div>` : ""}
+        ${previewBlock}
+        ${renderDeckMap(it.placements)}
         <div class="drawer-section">
           <h3>Migration & Identity</h3>
           <div class="kv-grid">
@@ -330,6 +472,9 @@
         const e = state.byExportId.get(eid);
         return `<button class="pill link" data-jump="${esc(eid)}">${esc(e ? e.name : eid)}</button>`;
       }).join("");
+      const previewOwner = state.hasPreviews
+        ? state.data.exports.find((e) => e.previewHtml && e.previewHtml.includes(it.hash))
+        : null;
       body = `
         <div class="drawer-head">
           <div>
@@ -342,6 +487,9 @@
           </div>
           <button class="drawer-close" id="close-drawer">Close</button>
         </div>
+        ${it.description ? `<div class="desc-box">${esc(it.description)}</div>` : ""}
+        ${previewOwner ? `<div class="drawer-section"><h3>Rendered In Component Preview (<button class="pill link" data-jump="${esc(previewOwner.id)}">${esc(previewOwner.name)}</button>)</h3><div class="preview-stage"><div class="preview-inner" style="width:${Math.min(previewOwner.previewWidth || 360, 400)}px">${previewOwner.previewHtml}</div></div></div>` : ""}
+        ${renderDeckMap(it.placements)}
         <div class="drawer-section">
           <h3>Webpack → Vite CSS Bridge</h3>
           <div class="kv-grid">
@@ -380,6 +528,8 @@
           </div>
           <button class="drawer-close" id="close-drawer">Close</button>
         </div>
+        ${it.description ? `<div class="desc-box">${esc(it.description)}</div>` : ""}
+        ${renderDeckMap(it.placements)}
         <div class="drawer-section">
           <h3>Overview</h3>
           <div class="kv-grid">
@@ -403,10 +553,11 @@
           </div>
           <button class="drawer-close" id="close-drawer">Close</button>
         </div>
+        ${it.previewSvg ? `<div class="drawer-section"><h3>Icon Image</h3><div class="icon-drawer-stage">${it.previewSvg}</div></div>` : ""}
         <div class="drawer-section">
           <h3>Details</h3>
           <div class="kv-grid">
-            <div class="kv-k">Directional</div><div class="kv-v">${it.directional ? "Yes (accepts direction prop)" : "No"}</div>
+            <div class="kv-k">Directional</div><div class="kv-v">${it.directional ? "Yes (accepts direction prop: up/down/left/right)" : "No"}</div>
             <div class="kv-k">Vite ESM</div><div class="kv-v mono">${it.viteAt.map(esc).join("<br>")}</div>
             <div class="kv-k">Webpack Bridge</div><div class="kv-v mono">${it.webpackAt.map(esc).join("<br>") || "None"}</div>
           </div>
@@ -458,8 +609,8 @@
         const term = btn.getAttribute("data-search") || "";
         $("omnibox").value = term;
         state.query = term;
-        if (state.tab === "translate") setTab("all");
-        applyFilters();
+        if (state.tab === "translate" || state.tab === "gallery") setTab("all");
+        else applyFilters();
       });
     });
   }
@@ -476,11 +627,15 @@
       b.classList.toggle("active", b.getAttribute("data-tab") === tab);
     });
     const isTrans = tab === "translate";
+    const isGallery = tab === "gallery" || (tab === "icons" && state.hasIconSvgs);
     $("translator-view").classList.toggle("active", isTrans);
-    $("list-view").style.display = isTrans ? "none" : "flex";
+    $("gallery-view").classList.toggle("active", isGallery);
+    $("list-view").style.display = isTrans || isGallery ? "none" : "flex";
     if (isTrans) {
       if (location.hash !== "#translate") history.replaceState(null, "", "#translate");
       runTranslator();
+    } else if (isGallery) {
+      renderVisualGallery();
     } else {
       applyFilters();
     }
@@ -531,6 +686,10 @@
     if (!h) return;
     if (h === "translate") {
       setTab("translate");
+      return;
+    }
+    if (h === "gallery" && state.hasPreviews) {
+      setTab("gallery");
       return;
     }
     if (h.startsWith("q/")) {
@@ -634,8 +793,13 @@
 
     window.addEventListener("hashchange", routeFromHash);
 
-    applyFilters();
-    routeFromHash();
+    // When local visual previews are bundled, open directly onto the Visual Gallery so users immediately see Steam components!
+    if (state.hasPreviews && !location.hash) {
+      setTab("gallery");
+    } else {
+      applyFilters();
+      routeFromHash();
+    }
   }
 
   init();

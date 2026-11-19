@@ -350,6 +350,178 @@ a:hover { text-decoration: underline; }
 
 .empty-state { padding: 40px 24px; text-align: center; color: var(--gp-sub); }
 
+/* Visual Gallery & Icon Grid */
+#gallery-view {
+  display: none;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 16px 20px 36px;
+}
+#gallery-view.active { display: block; }
+.gallery-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(390px, 1fr));
+  gap: 14px;
+}
+.comp-card {
+  background: var(--gp-card);
+  border: 1px solid var(--gp-border-subtle);
+  border-radius: 7px;
+  padding: 13px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+  transition: border-color 0.12s, transform 0.08s;
+}
+.comp-card:hover { border-color: var(--gp-blue); background: rgba(27, 40, 56, 0.55); }
+.comp-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.comp-card-title { margin: 0; font-size: 14.5px; font-weight: 700; color: var(--gp-bright); }
+.comp-card-desc { margin: 0; font-size: 12px; color: var(--gp-body); line-height: 1.4; }
+.preview-stage {
+  background: var(--gp-surface);
+  border: 1px solid var(--gp-border-subtle);
+  border-radius: 5px;
+  padding: 12px;
+  overflow: auto;
+  position: relative;
+  isolation: isolate;
+  color: var(--gp-text);
+  min-height: 44px;
+}
+.preview-inner { position: relative; max-width: 100%; }
+.preview-stage button:not([class]) { background: var(--gp-border); color: var(--gp-text); border: 1px solid var(--gp-muted); border-radius: 3px; padding: 4px 10px; }
+
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 9px;
+}
+.icon-card {
+  background: var(--gp-card);
+  border: 1px solid var(--gp-border-subtle);
+  border-radius: 6px;
+  padding: 11px 8px 9px;
+  text-align: center;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transition: border-color 0.12s, background 0.12s;
+}
+.icon-card:hover { border-color: var(--gp-blue); background: var(--gp-store-dark); }
+.icon-svg-box {
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gp-text);
+}
+.icon-svg-box svg { width: 36px !important; height: 36px !important; display: block; position: static !important; }
+.icon-svg-box > div { position: relative !important; width: 36px !important; height: 36px !important; top: auto !important; left: auto !important; margin: 0 !important; }
+.icon-svg-label { font-size: 11px; color: var(--gp-body); word-break: break-word; line-height: 1.25; }
+.icon-drawer-stage {
+  background: var(--gp-surface);
+  border: 1px solid var(--gp-border-subtle);
+  border-radius: 6px;
+  padding: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gp-bright);
+}
+.icon-drawer-stage svg { width: 72px !important; height: 72px !important; position: static !important; }
+.icon-drawer-stage > div { position: relative !important; width: 72px !important; height: 72px !important; top: auto !important; left: auto !important; margin: 0 !important; }
+
+/* Steam Deck Screen Map Schematic */
+.deck-map {
+  background: var(--gp-darkest);
+  border: 1px solid var(--gp-border);
+  border-radius: 7px;
+  padding: 10px;
+}
+.deck-screen {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  width: 100%;
+  background: #121822;
+  border: 1px solid var(--gp-border-subtle);
+  border-radius: 5px;
+  display: grid;
+  grid-template-rows: 16% 1fr 14%;
+  grid-template-columns: 22% 1fr 24%;
+  gap: 3px;
+  padding: 4px;
+  overflow: hidden;
+}
+.dm-zone {
+  background: rgba(61, 68, 80, 0.25);
+  border: 1px solid rgba(61, 68, 80, 0.55);
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--gp-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2px;
+}
+.dm-zone.on {
+  background: rgba(26, 159, 255, 0.28);
+  border-color: var(--gp-blue);
+  color: var(--gp-blue-soft);
+  box-shadow: inset 0 0 10px rgba(26, 159, 255, 0.35);
+}
+.dm-top { grid-column: 1 / 4; grid-row: 1; }
+.dm-left { grid-column: 1; grid-row: 2; }
+.dm-main { grid-column: 2; grid-row: 2; }
+.dm-qam { grid-column: 3; grid-row: 2; }
+.dm-footer { grid-column: 1 / 4; grid-row: 3; }
+.dm-float {
+  position: absolute;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  border-radius: 4px;
+  background: rgba(26, 159, 255, 0.34);
+  border: 1.5px solid var(--gp-blue);
+  color: var(--gp-bright);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
+  padding: 2px 6px;
+}
+.dm-float.on { display: flex; }
+.dm-modal { inset: 22% 24%; }
+.dm-ctx { top: 26%; right: 26%; width: 24%; height: 34%; }
+.dm-kbd { left: 10%; right: 10%; bottom: 12%; height: 34%; }
+.dm-toast { top: 18%; right: 5%; width: 28%; height: 18%; }
+.dm-legend { margin-top: 7px; font-size: 11.5px; color: var(--gp-body); display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.desc-box {
+  background: rgba(27, 40, 56, 0.55);
+  border-left: 3px solid var(--gp-blue);
+  border-radius: 0 5px 5px 0;
+  padding: 9px 11px;
+  font-size: 12.5px;
+  color: var(--gp-text);
+  margin-bottom: 14px;
+  line-height: 1.45;
+}
+
 @media (max-width: 1040px) {
   .sidebar { display: none; }
   #detail-drawer { width: 100%; flex: 0 0 auto; position: fixed; inset: 0; z-index: 50; }
@@ -394,6 +566,7 @@ export function renderGuideHtml(opts: { embeddedData?: GuideData; dataUrl?: stri
   <nav class="toolbar">
     <div class="tabs">
       <button class="tab-btn active" data-tab="all">All <span class="tab-count"></span></button>
+      <button class="tab-btn" data-tab="gallery" id="tab-gallery" style="display:none">Visual Gallery <span class="tab-count"></span></button>
       <button class="tab-btn" data-tab="components">Components <span class="tab-count"></span></button>
       <button class="tab-btn" data-tab="stores">Stores <span class="tab-count"></span></button>
       <button class="tab-btn" data-tab="css-modules">CSS Modules <span class="tab-count"></span></button>
@@ -423,7 +596,7 @@ export function renderGuideHtml(opts: { embeddedData?: GuideData; dataUrl?: stri
     <main class="main-pane" id="list-view">
       <div class="list-status">
         <span id="list-count">Loading…</span>
-        <span>Click any row to open cross-linked Migration &amp; CSS Drawer · Press <kbd>Esc</kbd> to clear</span>
+        <span>Click any row to open cross-linked Visual, Placement &amp; CSS Drawer · Press <kbd>Esc</kbd> to clear</span>
       </div>
       <div id="virtual-viewport">
         <div id="virtual-spacer">
@@ -431,6 +604,14 @@ export function renderGuideHtml(opts: { embeddedData?: GuideData; dataUrl?: stri
         </div>
       </div>
     </main>
+
+    <section id="gallery-view">
+      <div class="gallery-header">
+        <div id="gallery-title" style="font-size:13px;color:var(--gp-sub)"></div>
+        <div id="gallery-note" style="font-size:11.5px;color:var(--gp-muted)"></div>
+      </div>
+      <div id="gallery-body"></div>
+    </section>
 
     <section id="translator-view">
       <div class="translator-grid">

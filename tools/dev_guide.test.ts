@@ -6,6 +6,7 @@ import {
   validatePublicGuideData,
   type GuideData,
 } from "./dev_guide_schema";
+import { describeExport, describeCssModule, PLACEMENT_LABELS } from "./dev_guide_docs";
 import {
   analyzeViteChunkAst,
   buildCssIndex,
@@ -464,6 +465,74 @@ describe("dev_guide_extract: Semantic naming & end-to-end GuideData assembly", (
     // Unmatched helper stays honestly tagged unmatched
     const opaque = data.exports.find((e) => e.viteAt.includes("esm:chunk~kb.js:zt"));
     expect(opaque?.confidence).toBe("unmatched");
+  });
+
+  test("dev_guide_docs provides plain-English descriptions and UI placements for components, stores, and CSS modules", () => {
+    const btnDoc = describeExport({
+      name: "ButtonItem",
+      kind: "component",
+      sourcePackage: "@decky/ui",
+      featureArea: "CommonUI",
+      props: ["label", "description", "onClick"],
+      storeFields: [],
+      steamClientApis: [],
+      cssModuleNames: [],
+    });
+    expect(btnDoc.description.length).toBeGreaterThan(20);
+    expect(btnDoc.placements).toContain("qam-drawer");
+    expect(btnDoc.placements).toContain("settings-panel");
+    expect(PLACEMENT_LABELS["qam-drawer"]).toBeTruthy();
+
+    const inferredStore = describeExport({
+      name: "KeyboardStore",
+      kind: "store",
+      sourcePackage: "steamui",
+      featureArea: "Keyboard",
+      props: [],
+      storeFields: ["m_bVisible", "m_strLayout"],
+      steamClientApis: ["SteamClient.Input.ShowVirtualKeyboard"],
+      cssModuleNames: [],
+    });
+    expect(inferredStore.description).toContain("m_bVisible");
+    expect(inferredStore.placements).toContain("virtual-keyboard");
+
+    const cssDoc = describeCssModule("Keyboard", "Keyboard", ["KeyboardKey", "KeyboardRow"]);
+    expect(cssDoc.description.length).toBeGreaterThan(15);
+    expect(cssDoc.placements).toContain("virtual-keyboard");
+  });
+
+  test("validatePublicGuideData rejects local previews in public mode but allows them in local preview mode", () => {
+    const withPrev: GuideData = {
+      schemaVersion: SCHEMA_VERSION,
+      generatedAt: "2026-11-19T00:00:00.000Z",
+      beta: { branch: "publicbeta", version: "1795048523", isVite: true, chunkCount: 1, moduleCount: 1 },
+      webpackBaseline: { branch: "stable", version: "1794536281", exportCount: 1 },
+      stats: {
+        cssModules: 0, cssClasses: 0, cssMatched: 0, cssUnmatched: 0, plainClasses: 0,
+        exports: 1, verifiedExports: 1, inferredExports: 0, unmatchedExports: 0, webpackMatchedExports: 1, icons: 1, chunks: 1,
+      },
+      featureAreas: [],
+      cssModules: [],
+      cssClasses: [],
+      plainClasses: [],
+      exports: [{
+        id: "comp:ButtonItem", name: "ButtonItem", kind: "component", confidence: "verified", evidence: ["@decky/ui"],
+        featureArea: "CommonUI", viteAt: ["esm:chunk~a.js:ac"], chunk: "chunk~a.js", webpackAt: ["23477:xh"],
+        migration: "changed", sourcePackage: "@decky/ui", props: ["onClick"], storeFields: [], methods: [],
+        steamClientApis: [], cssClasses: [], cssModules: [], recipe: 'import { ButtonItem } from "@decky/ui";',
+        description: "Full-width clickable action button row.", placements: ["qam-drawer"],
+        previewHtml: '<div class="DialogButton">Run</div>', previewWidth: 360,
+      }],
+      icons: [{
+        name: "SteamLogo", viteAt: ["esm:chunk~ico.js:SteamLogo"], webpackAt: [], directional: false,
+        recipe: 'import { IconsModule } from "@decky/ui"; // <IconsModule.SteamLogo />',
+        previewSvg: '<svg viewBox="0 0 32 32"><path d="M0 0"/></svg>',
+      }],
+      chunks: [],
+      previewCss: ".DialogButton { background: #3d4450; }",
+    };
+    expect(validatePublicGuideData(withPrev).length).toBeGreaterThan(0);
+    expect(validatePublicGuideData(withPrev, { allowPreviews: true })).toEqual([]);
   });
 
   test("buildGuideData never embeds CSS/SVG/JS strings into auto-generated finder recipes", () => {

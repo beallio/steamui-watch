@@ -49,6 +49,19 @@ export type SourcePackage =
   | "CommonUIModule"
   | "steamui";
 
+export type PlacementZone =
+  | "top-bar"
+  | "left-sidebar"
+  | "main-content"
+  | "qam-drawer"
+  | "settings-panel"
+  | "footer-bar"
+  | "modal-overlay"
+  | "context-menu"
+  | "virtual-keyboard"
+  | "toast-overlay"
+  | "background-store";
+
 export interface CssClassEntry {
   id: string;
   hash: string;
@@ -64,6 +77,8 @@ export interface CssClassEntry {
   isKeyframe: boolean;
   usedBy: string[];
   cssSnippet: string;
+  description?: string;
+  placements?: PlacementZone[];
 }
 
 export interface CssModuleEntry {
@@ -75,6 +90,8 @@ export interface CssModuleEntry {
   matchedCount: number;
   classes: string[];
   usedBy: string[];
+  description?: string;
+  placements?: PlacementZone[];
 }
 
 export interface JsExportEntry {
@@ -97,6 +114,12 @@ export interface JsExportEntry {
   cssClasses: string[];
   cssModules: string[];
   recipe: string;
+  description?: string;
+  placements?: PlacementZone[];
+  /** Local --with-previews only (never included in public Pages output). */
+  previewHtml?: string;
+  previewWidth?: number;
+  previewNote?: string;
 }
 
 export interface IconEntry {
@@ -105,6 +128,8 @@ export interface IconEntry {
   webpackAt: string[];
   directional: boolean;
   recipe: string;
+  /** Local --with-previews only (never included in public Pages output). */
+  previewSvg?: string;
 }
 
 export interface ChunkEntry {
@@ -136,6 +161,8 @@ export interface GuideStats {
   webpackMatchedExports: number;
   icons: number;
   chunks: number;
+  renderedPreviews?: number;
+  renderedIcons?: number;
 }
 
 export interface GuideData {
@@ -161,6 +188,8 @@ export interface GuideData {
   exports: JsExportEntry[];
   icons: IconEntry[];
   chunks: ChunkEntry[];
+  /** Local --with-previews only (scoped Valve CSS for rendered component/icon snapshots). */
+  previewCss?: string;
 }
 
 const FEATURE_RULES: [string, RegExp][] = [
@@ -208,11 +237,15 @@ const RAW_JS_BODY = /\b(?:function\s*\([^)]*\)\s*\{[^}]*\breturn\b|=>\s*\{[^}]*\
 /**
  * Enforce the strict public-repo Valve-asset boundary:
  * zero raw Valve JS bodies, zero verbatim CSS rule declarations, zero SVG markup.
+ * When `allowPreviews: true` (local-only docs/local/ builds), rendered preview fields are permitted.
  */
-export function validatePublicGuideData(data: GuideData): string[] {
+export function validatePublicGuideData(data: GuideData, opts: { allowPreviews?: boolean } = {}): string[] {
   const errors: string[] = [];
   if (data.schemaVersion !== SCHEMA_VERSION) {
     errors.push(`Unsupported schemaVersion: ${data.schemaVersion}`);
+  }
+  if (!opts.allowPreviews) {
+    if (data.previewCss) errors.push("previewCss is only allowed in local --with-previews mode");
   }
   const checkStr = (label: string, value: string | null | undefined) => {
     if (!value) return;
@@ -230,9 +263,15 @@ export function validatePublicGuideData(data: GuideData): string[] {
     checkStr(`export[${e.id}].recipe`, e.recipe);
     checkStr(`export[${e.id}].name`, e.name);
     for (const ev of e.evidence) checkStr(`export[${e.id}].evidence`, ev);
+    if (!opts.allowPreviews && e.previewHtml) {
+      errors.push(`export[${e.id}].previewHtml is only allowed in local --with-previews mode`);
+    }
   }
   for (const icon of data.icons) {
     checkStr(`icon[${icon.name}].recipe`, icon.recipe);
+    if (!opts.allowPreviews && icon.previewSvg) {
+      errors.push(`icon[${icon.name}].previewSvg is only allowed in local --with-previews mode`);
+    }
   }
   return errors;
 }
