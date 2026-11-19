@@ -19,8 +19,12 @@ from pathlib import Path
 from typing import NamedTuple
 
 from css_mappings import BRANCHES, download_sources, extract_class_modules, fetch_manifest
+from vite_css import is_vite_bundle
 
-LOADER = "decky-loader dcecc3b7a9c89e0fa1c122653ed7f8a9dd59fca0"
+LOADER = "decky-loader 724cdbe58ead96c41c4e6d156a6015e136946f8f"
+
+_SIMPLE_BACKTICK_RE = re.compile(r'`([^`\\\n\r"]*?)`')
+_LET_DESTRUCTURE_RE = re.compile(r'\blet\{')
 
 type Text = str | re.Pattern[str]
 
@@ -86,7 +90,7 @@ def load_ui_finders(path):
 FINDERS = (
     # errorboundary-hook.tsx anchors this to the whole function; a bundle search cannot.
     code(LOADER, "errorboundary-hook: error reporting store",
-         re.compile(r"\(\)=>\([\w$]+\|\|(?:[\w$]+\(|\([\w$]+=)new [\w$]+\),[\w$]+\)"), name("BIsBlacklisted")),
+         re.compile(r"\(\)=>\([\w$]+(?:\|\|=|\|\|(?:[\w$]+\(|\([\w$]+=))new [\w$]+\)?,[\w$]+\)"), name("BIsBlacklisted")),
     code(LOADER, "router-hook: Route", '"router-backstack"',
          (re.compile(r"routePath:[\w$]+\.match\?\.path."), re.compile(r"routePath:null===\(.=.\.match\)"))),
     code(LOADER, "router-hook: router node", "bShowDesktopUIContent:"),
@@ -112,9 +116,18 @@ def _describe(text):
     return f"`{text.pattern}` (regex)" if isinstance(text, re.Pattern) else f"`{text}`"
 
 
+def _normalize_oxc(text: str) -> str:
+    """Normalize Oxc's simple backtick literals and `let{` destructuring to match Decky's runtime shim."""
+    text = _SIMPLE_BACKTICK_RE.sub(lambda m: m.group(0) if "${" in m.group(1) else f'"{m.group(1)}"', text)
+    return _LET_DESTRUCTURE_RE.sub("const{", text)
+
+
 def missing(sources, class_modules, finders=FINDERS):
     """Return (finder, reason) for every finder the bundle no longer satisfies."""
+    is_vite = is_vite_bundle(sources)
     bundle = "\n".join(sources)
+    if is_vite:
+        bundle = _normalize_oxc(bundle)
     found = {}
 
     def hit(text):
@@ -125,6 +138,9 @@ def missing(sources, class_modules, finders=FINDERS):
     result = []
     for finder in finders:
         if rule := finder.classes:
+            if is_vite:
+                # Vite/Rolldown tree-shakes CSS class-name objects out of JS; vite_css.py tracks CSS classes.
+                continue
             candidates = [class_modules.get(rule.module, {})] if rule.module else class_modules.values()
             if not any(rule.has <= m.keys() and not rule.lacks & m.keys() for m in candidates):
                 where = f"module {rule.module}" if rule.module else "class module"
