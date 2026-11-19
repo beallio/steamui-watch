@@ -302,10 +302,105 @@ function buildRuntimeCollectorScript(files: string[], isVite: boolean): string {
   })(${JSON.stringify(files)}, ${JSON.stringify(extras)}, ${JSON.stringify(isVite)})`;
 }
 
+const MIME_BY_EXT: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
+  ".ttf": "font/ttf",
+};
+
+/**
+ * Inline ephemeral `http://127.0.0.1:<port>/...` or relative `/images/...` asset URLs
+ * inside captured preview HTML/CSS as base64 `data:` URIs so offline previews (like SteamSpinner) render cleanly.
+ */
+export async function inlineLocalPreviewAssets(
+  previews: CapturedPreviews,
+  bundleRoot: string,
+): Promise<CapturedPreviews> {
+  const cache = new Map<string, string | null>();
+  const toDataUri = async (rawUrl: string): Promise<string | null> => {
+    const clean = rawUrl.trim().replace(/^['"]|['"]$/g, "");
+    if (!clean || clean.startsWith("data:")) return null;
+    let rel = clean;
+    const localMatch = clean.match(/^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\/(.+)$/i);
+    if (localMatch) {
+      rel = localMatch[1];
+    } else if (clean.startsWith("/")) {
+      rel = clean.slice(1);
+    } else if (clean.startsWith("../")) {
+      rel = clean.replace(/^(?:\.\.\/)+/, "");
+    } else {
+      return null;
+    }
+    rel = decodeURIComponent(rel.split(/[?#]/)[0]);
+    if (rel.includes("..")) return null;
+    if (cache.has(rel)) return cache.get(rel)!;
+    const file = Bun.file(join(bundleRoot, rel));
+    if (!(await file.exists())) {
+      cache.set(rel, null);
+      return null;
+    }
+    const ext = rel.slice(rel.lastIndexOf(".")).toLowerCase();
+    const mime = MIME_BY_EXT[ext] ?? "application/octet-stream";
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const uri = `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`;
+    cache.set(rel, uri);
+    return uri;
+  };
+
+  const replaceHtml = async (html: string): Promise<string> => {
+    const matches = [...html.matchAll(/\b(src|href)="([^"]+)"/g)];
+    let out = html;
+    for (const m of matches) {
+      const uri = await toDataUri(m[2]);
+      if (uri) out = out.replaceAll(m[0], `${m[1]}="${uri}"`);
+    }
+    return out;
+  };
+
+  const replaceCssUrls = async (css: string): Promise<string> => {
+    const matches = [...css.matchAll(/url\(([^)]+)\)/g)];
+    let out = css;
+    for (const m of matches) {
+      const uri = await toDataUri(m[1]);
+      if (uri) out = out.replaceAll(m[0], `url("${uri}")`);
+    }
+    return out;
+  };
+
+  const components: CapturedPreviews["components"] = {};
+  for (const [k, v] of Object.entries(previews.components)) {
+    components[k] = { ...v, html: v.html ? await replaceHtml(v.html) : v.html };
+  }
+  const icons: CapturedPreviews["icons"] = {};
+  for (const [k, v] of Object.entries(previews.icons)) {
+    icons[k] = await replaceHtml(v);
+  }
+  const css = await replaceCssUrls(previews.css);
+  return { components, icons, css };
+}
+
+/**
+ * Scope Steam Deck Gaming Mode root selectors (`html.GamepadMode`, `html.responsive`, `body`)
+ * onto `.preview-stage` so Gaming Mode styling applies accurately inside preview cards without affecting guide chrome.
+ */
+export function scopePreviewCssForGamepadMode(css: string): string {
+  return css
+    .replace(/\bhtml((?:\.[A-Za-z0-9_-]+)+)(?=[\s>+~:{,])/g, ".preview-stage$1")
+    .replace(/\bbody((?:\.[A-Za-z0-9_-]+)+)(?=[\s>+~:{,])/g, ".preview-stage$1");
+}
+
 function buildPreviewCollectorScript(): string {
   return `(async (entries, candidates, manifest) => {
     const w = window;
     w.__stubInert = true;
+    document.documentElement.classList.add("GamepadMode", "responsive");
+    document.body.classList.add("GamepadMode", "BasicUI");
     const W = await import("/probe/webpack.js");
     const L = await import("/probe/index.js");
     const R = w.SP_REACT, D = w.SP_REACTDOM;
@@ -453,7 +548,9 @@ async function runBundleRuntimeProbe(opts: {
     const data = await page.evaluate<PageRuntimeCollection>(buildRuntimeCollectorScript(files, page.isVite));
     let previews: CapturedPreviews | undefined;
     if (opts.withPreviews) {
-      previews = await page.evaluate<CapturedPreviews>(buildPreviewCollectorScript());
+      const rawPreviews = await page.evaluate<CapturedPreviews>(buildPreviewCollectorScript());
+      const inlined = await inlineLocalPreviewAssets(rawPreviews, opts.root);
+      previews = { ...inlined, css: scopePreviewCssForGamepadMode(inlined.css) };
     }
     return { isVite: page.isVite, data, previews };
   } finally {

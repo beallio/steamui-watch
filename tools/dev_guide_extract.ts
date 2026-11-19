@@ -760,6 +760,21 @@ function scoreBags(a: TokenBag, b: TokenBag): { score: number; strong: boolean }
   return { score, strong };
 }
 
+const RPC_SERVICE_RE = /^([A-Z][A-Za-z0-9_]+)\.([A-Z][A-Za-z0-9_]+)#\d+$/;
+
+function extractNamespaceMember(at: string[]): string | null {
+  for (const loc of at) {
+    const parts = loc.split(":");
+    if (parts.length === 4 && parts[0] === "esm") {
+      const member = parts[3];
+      if (/^[A-Za-z][A-Za-z0-9_]{3,}$/.test(member) && member !== "default" && !GENERIC_TOKENS.has(member)) {
+        return member;
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * Inverted-index dual-bundle matcher: matches Vite runtime exports back to legacy Webpack exports.
  * Rejects weak matches (< 25) and ambiguous ties (top2 within 5 points).
@@ -771,6 +786,7 @@ export function matchWebpackToVite(
 ): Map<string, WebpackMatch> {
   const wpBags = webpackExports.map(buildWebpackBag);
   const inverted = new Map<string, number[]>();
+  const wpKeyToOwners = new Map<string, number[]>();
   const addPost = (key: string, idx: number) => {
     let list = inverted.get(key);
     if (!list) {
@@ -787,6 +803,19 @@ export function matchWebpackToVite(
     for (const m of bag.methods) addPost(`m:${m}`, i);
     for (const k of bag.keys) addPost(`k:${k}`, i);
     for (const n of bag.names) addPost(`n:${n}`, i);
+    // Index namespace/service object keys so Vite 4-segment exports (`esm:chunk:ns:ExportClip`) can bridge to `40326:xM.ExportClip`
+    if (webpackExports[i].keys.length >= 2) {
+      for (const k of webpackExports[i].keys) {
+        if (k.length >= 4 && !GENERIC_TOKENS.has(k)) {
+          let owners = wpKeyToOwners.get(k);
+          if (!owners) {
+            owners = [];
+            wpKeyToOwners.set(k, owners);
+          }
+          owners.push(i);
+        }
+      }
+    }
   }
 
   // Drop ultra-high-frequency tokens (> 80 exports) from candidate seeding to stay fast.
@@ -827,6 +856,19 @@ export function matchWebpackToVite(
         webpackAt: [...webpackExports[bestIdx].at],
         score: bestScore,
       });
+    } else {
+      // Fallback for 4-segment Vite namespace members (`esm:chunk:ns:ExportClip`) -> unique Webpack owner (`40326:xM.ExportClip`)
+      const member = extractNamespaceMember(vExp.at);
+      if (member) {
+        const owners = wpKeyToOwners.get(member);
+        if (owners && owners.length === 1) {
+          const ownerAt = webpackExports[owners[0]].at;
+          results.set(vExp.id, {
+            webpackAt: ownerAt.map((loc) => `${loc}.${member}`),
+            score: 85,
+          });
+        }
+      }
     }
   }
 
@@ -881,11 +923,18 @@ export function inferExportSemantics(
     }
   }
 
+  const nsMember = extractNamespaceMember(exp.at);
+  const rpcString = exp.strings.find((s) => RPC_SERVICE_RE.test(s));
+  const rpcMatch = rpcString?.match(RPC_SERVICE_RE);
+
   const topModId = [...cssModCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
   const topMod = topModId ? cssModulesById.get(topModId) : undefined;
   const featureHints = [
     astInfo?.displayName ?? "",
     astInfo?.name ?? "",
+    nsMember ?? "",
+    rpcMatch?.[1] ?? "",
+    rpcMatch?.[2] ?? "",
     topMod?.name ?? "",
     ...semanticClassNames,
     ...storeFields,
@@ -905,7 +954,25 @@ export function inferExportSemantics(
     };
   }
 
-  // 2. Surviving readable symbol name
+  // 2. Surviving readable namespace member (`esm:chunk:$:ExportClip`) or Steam RPC method (`GameRecording.ExportClip#1`)
+  if (nsMember || rpcMatch) {
+    const derivedName = rpcMatch
+      ? `${rpcMatch[1]}.${rpcMatch[2]}`
+      : nsMember!;
+    const evidence: string[] = [];
+    if (nsMember) evidence.push(`namespace:${nsMember}`);
+    if (rpcString) evidence.push(`rpc:${rpcString}`);
+    if (topMod) evidence.push(`css:${topMod.name}`);
+    return {
+      name: derivedName,
+      kind,
+      confidence: "inferred",
+      evidence,
+      featureArea,
+    };
+  }
+
+  // 3. Surviving readable symbol name
   if (astInfo?.name && isReadableSymbol(astInfo.name)) {
     return {
       name: astInfo.name,

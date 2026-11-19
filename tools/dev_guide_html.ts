@@ -499,11 +499,12 @@ a:hover { text-decoration: underline; }
   font-weight: 700;
   text-transform: uppercase;
   border-radius: 4px;
-  background: rgba(26, 159, 255, 0.34);
+  background: #133558;
   border: 1.5px solid var(--gp-blue);
   color: var(--gp-bright);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.65);
   padding: 2px 6px;
+  z-index: 2;
 }
 .dm-float.on { display: flex; }
 .dm-modal { inset: 22% 24%; }
@@ -607,8 +608,11 @@ export function renderGuideHtml(opts: { embeddedData?: GuideData; dataUrl?: stri
 
     <section id="gallery-view">
       <div class="gallery-header">
-        <div id="gallery-title" style="font-size:13px;color:var(--gp-sub)"></div>
-        <div id="gallery-note" style="font-size:11.5px;color:var(--gp-muted)"></div>
+        <div>
+          <div id="gallery-title" style="font-size:13px;color:var(--gp-sub)"></div>
+          <div id="gallery-note" style="font-size:11.5px;color:var(--gp-muted)"></div>
+        </div>
+        <button class="chip" id="toggle-gpfocus" style="display:none" title="Toggle Steam Deck gamepad focus highlight (.gpfocus / .gpfocuswithin) on rendered components">Simulate Gamepad Focus (gpfocus)</button>
       </div>
       <div id="gallery-body"></div>
     </section>

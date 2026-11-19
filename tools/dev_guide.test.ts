@@ -18,7 +18,7 @@ import {
   type WebpackExportRecord,
 } from "./dev_guide_extract";
 import { renderGuideHtml } from "./dev_guide_html";
-import { isViteDump, loadMappingDataFiles } from "./dev_guide";
+import { inlineLocalPreviewAssets, isViteDump, loadMappingDataFiles, scopePreviewCssForGamepadMode } from "./dev_guide";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -608,6 +608,39 @@ describe("dev_guide_extract: Semantic naming & end-to-end GuideData assembly", (
     );
     expect(noisy.confidence).toBe("unmatched");
   });
+
+  test("recovers semantic names and Webpack namespace bridge for 4-segment ESM namespace exports like ExportClip", () => {
+    const exp: ViteRuntimeExport = {
+      id: "rt:exportclip",
+      at: ["esm:chunk~198b531c82.js:$:ExportClip"],
+      kind: "helper",
+      strings: ["GameRecording.ExportClip#1"],
+      names: [],
+      methods: [],
+      keys: [],
+      cssHashes: [],
+    };
+    const inferred = inferExportSemantics(exp, undefined, new Map(), new Map());
+    expect(inferred.confidence).toBe("inferred");
+    expect(inferred.name).toBe("GameRecording.ExportClip");
+    expect(inferred.featureArea).toBe("Media & Recording");
+    expect(inferred.evidence).toContain("namespace:ExportClip");
+    expect(inferred.evidence).toContain("rpc:GameRecording.ExportClip#1");
+
+    const wpRecords: WebpackExportRecord[] = [
+      {
+        at: ["40326:xM"],
+        kind: "helper",
+        strings: [],
+        names: [],
+        methods: [],
+        keys: ["ExportClip", "ExportClipHandler", "DeleteClip", "SaveClip"],
+        cssKeys: [],
+      },
+    ];
+    const matches = matchWebpackToVite(wpRecords, [exp], new Map());
+    expect(matches.get("rt:exportclip")?.webpackAt).toEqual(["40326:xM.ExportClip"]);
+  });
 });
 
 describe("dev_guide_html", () => {
@@ -691,5 +724,44 @@ describe("dev_guide CLI helpers", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  test("inlineLocalPreviewAssets converts ephemeral localhost image URLs to base64 data URIs", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "dev-guide-assets-"));
+    try {
+      await mkdir(join(dir, "images"), { recursive: true });
+      const fakePng = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      await Bun.write(join(dir, "images/steam_spinner.png"), fakePng);
+
+      const previews = {
+        components: {
+          SteamSpinner: {
+            html: '<img alt="Steam Spinner" src="http://127.0.0.1:41395/images/steam_spinner.png">',
+            width: 360,
+          },
+        },
+        icons: {},
+        css: '.foo { background-image: url("http://127.0.0.1:41395/images/steam_spinner.png"); }',
+      };
+
+      const inlined = await inlineLocalPreviewAssets(previews, dir);
+      expect(inlined.components.SteamSpinner.html).toContain("data:image/png;base64,iVBORw0KGgo=");
+      expect(inlined.components.SteamSpinner.html).not.toContain("127.0.0.1");
+      expect(inlined.css).toContain("data:image/png;base64,iVBORw0KGgo=");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("scopePreviewCssForGamepadMode scopes html.GamepadMode and body selectors onto .preview-stage", () => {
+    const raw = `
+      html.GamepadMode .DialogButton { background: #3d4450; }
+      html.responsive.GamepadMode .Field { padding: 12px; }
+      :root { --gpColor-Blue: #1a9fff; }
+    `;
+    const scoped = scopePreviewCssForGamepadMode(raw);
+    expect(scoped).toContain(".preview-stage.GamepadMode .DialogButton");
+    expect(scoped).toContain(".preview-stage.responsive.GamepadMode .Field");
+    expect(scoped).toContain(":root { --gpColor-Blue: #1a9fff; }");
   });
 });

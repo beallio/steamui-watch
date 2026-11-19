@@ -20,6 +20,7 @@
     data: null,
     hasPreviews: false,
     hasIconSvgs: false,
+    simulateFocus: false,
     tab: "all",
     area: "all",
     conf: new Set(),
@@ -270,6 +271,7 @@
     const note = $("gallery-note");
 
     if (state.tab === "icons" && state.hasIconSvgs) {
+      $("toggle-gpfocus").style.display = "none";
       const icons = state.data.icons.filter((ic) => {
         if (!terms.length) return true;
         return matchesTerms(("icon iconsmodule " + ic.name + " " + ic.viteAt.join(" ")).toLowerCase(), terms);
@@ -293,6 +295,10 @@
     }
 
     // Component Visual Gallery
+    const gpBtn = $("toggle-gpfocus");
+    gpBtn.style.display = "";
+    gpBtn.classList.toggle("active", state.simulateFocus);
+    gpBtn.setAttribute("data-mig", state.simulateFocus ? "changed" : "");
     const comps = state.data.exports.filter((e) => {
       if (!e.previewHtml) return false;
       if (state.area !== "all" && e.featureArea !== state.area) return false;
@@ -318,15 +324,31 @@
             <span class="badge b-kind">${esc(e.sourcePackage)}</span>
           </div>
           ${e.description ? `<p class="comp-card-desc">${esc(e.description)}</p>` : ""}
-          <div class="preview-stage">
+          <div class="preview-stage GamepadMode responsive BasicUI">
             <div class="preview-inner" style="width:${Math.min(e.previewWidth || 360, 560)}px">${e.previewHtml}</div>
           </div>
           <div class="pill-list">${places}</div>
         </article>
       `;
     }).join("")}</div>`;
+    applySimulatedFocus(body);
     body.querySelectorAll("[data-open]").forEach((el) => {
       el.addEventListener("click", () => openDetail(el.getAttribute("data-open")));
+    });
+  }
+
+  function applySimulatedFocus(root) {
+    if (!root) return;
+    root.querySelectorAll(".preview-stage").forEach((stage) => {
+      const control = stage.querySelector("button.DialogButton, button, input, textarea, [role='slider'], [role='checkbox'], [role='radio'], [role='button']")
+        || stage.querySelector(".Focusable, [tabindex]");
+      if (control) {
+        control.classList.toggle("gpfocus", state.simulateFocus);
+        control.classList.toggle("gpfocuswithin", state.simulateFocus);
+      }
+      stage.querySelectorAll(".Focusable, .Panel, .preview-inner > div").forEach((el) => {
+        el.classList.toggle("gpfocuswithin", state.simulateFocus);
+      });
     });
   }
 
@@ -427,7 +449,7 @@
         return `<button class="pill link" data-jump="${esc(mid)}">${esc(m ? `${m.name} (${m.moduleId})` : mid)}</button>`;
       }).join("");
       const previewBlock = it.previewHtml
-        ? `<div class="drawer-section"><h3>Visual Preview</h3><div class="preview-stage"><div class="preview-inner" style="width:${Math.min(it.previewWidth || 360, 400)}px">${it.previewHtml}</div></div>${it.previewNote ? `<div class="row-sub" style="margin-top:5px">${esc(it.previewNote)}</div>` : ""}</div>`
+        ? `<div class="drawer-section"><h3>Visual Preview</h3><div class="preview-stage GamepadMode responsive BasicUI"><div class="preview-inner" style="width:${Math.min(it.previewWidth || 360, 400)}px">${it.previewHtml}</div></div>${it.previewNote ? `<div class="row-sub" style="margin-top:5px">${esc(it.previewNote)}</div>` : ""}</div>`
         : (it.previewNote ? `<div class="drawer-section"><h3>Visual Preview</h3><div class="row-sub">${esc(it.previewNote)}</div></div>` : "");
       body = `
         <div class="drawer-head">
@@ -488,7 +510,7 @@
           <button class="drawer-close" id="close-drawer">Close</button>
         </div>
         ${it.description ? `<div class="desc-box">${esc(it.description)}</div>` : ""}
-        ${previewOwner ? `<div class="drawer-section"><h3>Rendered In Component Preview (<button class="pill link" data-jump="${esc(previewOwner.id)}">${esc(previewOwner.name)}</button>)</h3><div class="preview-stage"><div class="preview-inner" style="width:${Math.min(previewOwner.previewWidth || 360, 400)}px">${previewOwner.previewHtml}</div></div></div>` : ""}
+        ${previewOwner ? `<div class="drawer-section"><h3>Rendered In Component Preview (<button class="pill link" data-jump="${esc(previewOwner.id)}">${esc(previewOwner.name)}</button>)</h3><div class="preview-stage GamepadMode responsive BasicUI"><div class="preview-inner" style="width:${Math.min(previewOwner.previewWidth || 360, 400)}px">${previewOwner.previewHtml}</div></div></div>` : ""}
         ${renderDeckMap(it.placements)}
         <div class="drawer-section">
           <h3>Webpack → Vite CSS Bridge</h3>
@@ -594,6 +616,7 @@
     }
 
     drawer.innerHTML = body;
+    applySimulatedFocus(drawer);
     drawer.querySelector("#close-drawer")?.addEventListener("click", closeDrawer);
     drawer.querySelectorAll("[data-copy]").forEach((btn) => {
       btn.addEventListener("click", () => copyText(btn.getAttribute("data-copy") || "", btn));
@@ -790,6 +813,11 @@
 
     $("translator-input").addEventListener("input", runTranslator);
     $("copy-translated").addEventListener("click", (e) => copyText($("translator-output").value, e.target));
+    $("toggle-gpfocus").addEventListener("click", () => {
+      state.simulateFocus = !state.simulateFocus;
+      renderVisualGallery();
+      applySimulatedFocus($("detail-drawer"));
+    });
 
     window.addEventListener("hashchange", routeFromHash);
 
