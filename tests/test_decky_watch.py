@@ -76,6 +76,26 @@ class MissingTest(unittest.TestCase):
         self.assertEqual([f.name for f, _ in missing(far, {"7": {"Title": "a", "Page": "b"}}, finders)],
                          ["f.js: A", "f.js: B", "f.js: C"], "`.+?` stops at 300 characters")
 
+    def test_vite_bundle_normalizes_oxc_syntax_and_skips_webpack_class_modules(self):
+        vite_bundle = [
+            "const __vite__mapDeps=(i)=>i;"
+            "function fn(e){let{onActivate:t,onCancel:n}=e;return{controller:`notification`,method:`toast`}}"
+            "const getStore=()=>(s||=new ErrStore,s);class ErrStore{BIsBlacklisted(){}}",
+        ]
+        err_finder = [f for f in FINDERS if f.name.startswith("errorboundary-hook")]
+        finders = (
+            *err_finder,
+            code("o", "backtick", 'controller:"notification",method:'),
+            code("o", "props", props("onActivate", "onCancel")),
+            classes("o", "inlined-css", "TabCount", "TabTitle"),
+        )
+        self.assertEqual(missing(vite_bundle, {}, finders), [])
+        # Still catches genuinely missing code finders on Vite bundles.
+        self.assertEqual(
+            [f.name for f, _ in missing(vite_bundle, {}, (code("o", "gone", "DefinitelyMissing"),))],
+            ["gone"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

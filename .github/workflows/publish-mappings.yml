@@ -82,7 +82,7 @@ jobs:
           mkdir "$TMPDIR/decky-ui"
           tar -xzf "$TMPDIR/decky-ui-$ui.tgz" -C "$TMPDIR/decky-ui"
           # Reject this extras update on a miss; CSS delivery still uses the previous extras below.
-          bun tools/runtime_probe.ts --decky-ui "$TMPDIR/decky-ui/package"
+          bun tools/runtime_probe.ts --extras-only --decky-ui "$TMPDIR/decky-ui/package"
           bun packages/decky-extras/build.ts --outdir "$TMPDIR/extras-package"
           npm pack "$TMPDIR/extras-package" --pack-destination "$TMPDIR" --silent
           cp packages/decky-extras/extras.json "$TMPDIR/site/decky-extras.json"

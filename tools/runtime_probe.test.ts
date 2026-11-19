@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { cdp, fingerprint } from "./runtime_probe";
+import { buildRegistrationFooter, cdp, extractTopLevelMutableNames, fingerprint, isExtraPassing, isViteHtml } from "./runtime_probe";
 
 type Socket = Bun.ServerWebSocket<undefined>;
 
@@ -61,4 +61,27 @@ test("fingerprint keeps string literals and long property names, not names insid
     strings: ['.notAProp', "Toggle \\\"on\\\"", "x${n}"],
     names: ["checked", "children", "childrenContainerWidth", "className", "jsx", "label", "onChange", "tip"],
   });
+});
+
+test("Vite HTML detection and top-level mutable ESM binding extraction", () => {
+  expect(isViteHtml('<script type="module" src="/library.js?contenthash=CVZWwsCP"></script>')).toBe(true);
+  expect(isViteHtml('<script defer="defer" src="/library.js"></script>')).toBe(false);
+
+  const esm = `
+    const __vite__mapDeps = (i) => i;
+    var a = 1, { b, c: d = 2 } = obj, [e, ...f] = arr;
+    let g = 3;
+    function Foo() { var inner = 4; }
+    export function Bar() {}
+    var toString = 5;
+  `;
+  expect(extractTopLevelMutableNames(esm)).toEqual(["a", "b", "d", "e", "f", "g", "Foo", "Bar"]);
+  expect(extractTopLevelMutableNames("(self.webpackChunksteamui||[]).push([]);")).toEqual([]);
+  expect(buildRegistrationFooter("chunk~1.js", ["a", "Foo"])).toBe(
+    '\n;(globalThis.__DECKY_ESM_REG__?.("chunk~1.js",{get a(){return a},set a(v){a=v},get Foo(){return Foo},set Foo(v){Foo=v}}));\n',
+  );
+  expect(isExtraPassing("CalloutMessage", 0, true)).toBe(true);
+  expect(isExtraPassing("CalloutMessage", 0, false)).toBe(false);
+  expect(isExtraPassing("CalloutMessage", 2, true)).toBe(false);
+  expect(isExtraPassing("ToggleRow", 0, true)).toBe(false);
 });

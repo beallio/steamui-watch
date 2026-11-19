@@ -20,6 +20,7 @@
  * finders need the Gaming Mode window, which this page never draws.
  */
 import { $ } from "bun";
+import * as acorn from "acorn";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -50,8 +51,115 @@ const { values: args } = parseArgs({
     "snapshot-dir": { type: "string" },
     "props-dir": { type: "string" },
     "baseline-dir": { type: "string" },
+    "extras-only": { type: "boolean", default: false },
   },
 });
+
+// Extras whose minified Vite body cannot be uniquely matched with schema-1 positive literals;
+// strictly required on Webpack Stable, allowed to be 0 matches on Vite Beta.
+export const VITE_OPTIONAL_EXTRAS = new Set(["CalloutMessage"]);
+
+const RESERVED_BINDINGS = new Set([
+  "__proto__", "prototype", "constructor", "toString", "valueOf", "hasOwnProperty",
+  "isPrototypeOf", "propertyIsEnumerable", "toLocaleString", "default", "arguments", "eval",
+]);
+
+export function isViteHtml(html: string): boolean {
+  return /<script\b[^>]*type=["']module["'][^>]*src=["'][^"']*library\.js/i.test(html);
+}
+
+/** Extract top-level mutable `var`/`let`/`function` declaration names from an ES module chunk. */
+export function extractTopLevelMutableNames(source: string): string[] {
+  if (source.includes("webpackChunksteamui")) return [];
+  const ast = acorn.parse(source, { ecmaVersion: "latest", sourceType: "module" }) as { body: any[] };
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const add = (n: string) => {
+    if (n && !RESERVED_BINDINGS.has(n) && !seen.has(n)) {
+      seen.add(n);
+      names.push(n);
+    }
+  };
+  const walkPat = (p: any) => {
+    if (!p) return;
+    if (p.type === "Identifier") add(p.name);
+    else if (p.type === "ObjectPattern") for (const prop of p.properties) walkPat(prop.type === "RestElement" ? prop.argument : prop.value);
+    else if (p.type === "ArrayPattern") for (const el of p.elements) walkPat(el);
+    else if (p.type === "AssignmentPattern") walkPat(p.left);
+    else if (p.type === "RestElement") walkPat(p.argument);
+  };
+  for (const stmt of ast.body) {
+    if (stmt.type === "VariableDeclaration" && (stmt.kind === "var" || stmt.kind === "let")) {
+      for (const d of stmt.declarations) walkPat(d.id);
+    } else if (stmt.type === "FunctionDeclaration" && stmt.id) {
+      add(stmt.id.name);
+    } else if (stmt.type === "ExportNamedDeclaration" && stmt.declaration) {
+      const dec = stmt.declaration;
+      if (dec.type === "VariableDeclaration" && (dec.kind === "var" || dec.kind === "let")) {
+        for (const d of dec.declarations) walkPat(d.id);
+      } else if (dec.type === "FunctionDeclaration" && dec.id) {
+        add(dec.id.name);
+      }
+    }
+  }
+  return names;
+}
+
+export function buildRegistrationFooter(chunkId: string, names: string[]): string {
+  if (!names.length) return "";
+  const props = names.map((n) => `get ${n}(){return ${n}},set ${n}(v){${n}=v}`).join(",");
+  return `\n;(globalThis.__DECKY_ESM_REG__?.(${JSON.stringify(chunkId)},{${props}}));\n`;
+}
+
+// Mirrors decky-loader's Vite ESM shim so headless probes test the same runtime surface.
+export const VITE_ESM_SHIM = `(() => {
+  if (globalThis.__DECKY_ESM_SHIM_INSTALLED__) return;
+  globalThis.__DECKY_ESM_SHIM_INSTALLED__ = true;
+  const origToString = Function.prototype.toString;
+  const simpleBacktick = /\`([^\`\\\\\\n\\r"]*?)\`/g;
+  const toStringCache = new WeakMap();
+  Function.prototype.toString = function toString() {
+    if (typeof this !== "function") return Object.prototype.toString.call(this);
+    const raw = origToString.call(this);
+    if (raw.indexOf("\`") === -1 && raw.indexOf("let{") === -1) return raw;
+    let cached = toStringCache.get(this);
+    if (cached && cached[0] === raw) return cached[1];
+    let norm = raw.replace(simpleBacktick, (m, inner) => (inner.includes("\${") ? m : '"' + inner + '"'));
+    norm = norm.replace(/\\blet\\{/g, "const{");
+    try { toStringCache.set(this, [raw, norm]); } catch {}
+    return norm;
+  };
+  const esm = (globalThis.__DECKY_ESM__ = new Map());
+  const seenObjs = new WeakSet();
+  globalThis.__DECKY_ESM_REG__ = (chunkId, box) => {
+    esm.set("esm:" + chunkId, box);
+    for (const k of Object.keys(box)) {
+      let v;
+      try { v = box[k]; } catch { continue; }
+      if (!v || typeof v !== "object" || Array.isArray(v) || v === window || v === document || v.$$typeof) continue;
+      if (typeof Node === "function" && v instanceof Node) continue;
+      if (typeof EventTarget === "function" && v instanceof EventTarget) continue;
+      if (seenObjs.has(v)) continue;
+      const proto = Object.getPrototypeOf(v);
+      if (proto === Object.prototype || proto === null || v[Symbol.toStringTag] === "Module") {
+        seenObjs.add(v);
+        esm.set("esm:" + chunkId + ":" + k, v);
+      }
+    }
+  };
+  if (!window.webpackChunksteamui) {
+    const req = (id) => esm.get(id);
+    req.m = new Proxy({}, {
+      ownKeys: () => [...esm.keys()],
+      getOwnPropertyDescriptor: (_, k) => (esm.has(k) ? { enumerable: true, configurable: true, value: true } : undefined),
+      has: (_, k) => esm.has(k),
+    });
+    Object.defineProperty(window, "webpackChunksteamui", {
+      configurable: true,
+      get: () => ({ push: ([, , cb]) => { if (typeof cb === "function") cb(req); } }),
+    });
+  }
+})();`;
 
 // Every property and call returns the stand-in; `.then(cb)` calls cb with a non-thenable copy, so
 // awaited Steam calls finish (a thenable value would loop forever). Inert once __stubInert is set,
@@ -94,7 +202,7 @@ export function fingerprint(source: string) {
   return { strings: [...strings].sort(), names: [...names].sort() };
 }
 
-const PROBE = (files: string[]) => `(async (files, manifest) => {
+const PROBE = (files: string[], extrasOnly = false) => `(async (files, manifest, extrasOnly) => {
   window.__stubInert = true;
   const out = { boot: {}, files: {}, loader: {}, extras: Object.fromEntries(Object.keys(manifest.components).map((name) => [name, "unavailable"])), snapshot: {} };
   let W;
@@ -137,6 +245,10 @@ const PROBE = (files: string[]) => `(async (files, manifest) => {
     if (matches.length === 1) record("extras:" + name, matches[0]);
   }
   for (const k of ["SP_REACT", "SP_REACTDOM", "SP_JSX"]) out.boot[k] = !!window[k];
+  if (extrasOnly) {
+    out.boot.modules = W.modules.size;
+    return out;
+  }
   for (const k of ["CommonUIModule", "IconsModule", "ReactRouter"]) { out.boot[k] = W[k] != null; record(k, W[k]); }
   for (const f of files) {
     try {
@@ -150,7 +262,7 @@ const PROBE = (files: string[]) => `(async (files, manifest) => {
   const check = (name, fn) => {
     try { const v = fn(); out.loader[name] = v ? "ok" : "missing"; record(name, v); } catch (e) { out.loader[name] = "threw: " + e; }
   };
-  const store = /^\\(\\)=>\\([\\w$]+\\|\\|(?:[\\w$]+\\(|\\([\\w$]+=)new [\\w$]+\\),[\\w$]+\\)$/;
+  const store = /^\\(\\)=>\\([\\w$]+(?:\\|\\|=|\\|\\|(?:[\\w$]+\\(|\\([\\w$]+=))new [\\w$]+\\)?,[\\w$]+\\)$/;
   const backstack = () => W.findModuleByExport((e) => typeof e == "string" && e == "router-backstack", 20);
   const qam = () => W.findModuleByExport((e) => e?.type?.toString?.()?.includes("QuickAccessMenuBrowserView"));
   check("errorboundary-hook: error reporting store", () => W.findModuleExport((e) => typeof e == "function" && e?.toString && store.test(e.toString())));
@@ -168,7 +280,7 @@ const PROBE = (files: string[]) => `(async (files, manifest) => {
   check("@decky/ui Modal.js: showModalRaw", () => W.findModuleExport((e) => typeof e === "function" && e.toString?.().includes("props.bDisableBackgroundDismiss") && !e?.prototype?.Cancel));
   out.boot.modules = W.modules.size;
   return out;
-})(${JSON.stringify(files)}, ${JSON.stringify(extras)})`;
+})(${JSON.stringify(files)}, ${JSON.stringify(extras)}, ${JSON.stringify(extrasOnly)})`;
 
 export async function fetchBundle(branch: string, dir: string) {
   const get = (url: string) => fetch(url, { headers: { "User-Agent": "steamui-watch" } });
@@ -229,6 +341,7 @@ export interface CdpClient {
 export interface SteamPage {
   evaluate<T>(expression: string): Promise<T>;
   close(): Promise<void>;
+  isVite: boolean;
 }
 
 /** CDP client. A call rejects when the connection fails or closes, or after `timeoutMs` without a reply. */
@@ -279,10 +392,25 @@ export function cdp(url: string, timeoutMs = CDP_TIMEOUT_MS): CdpClient {
  * and wait for Steam's app to boot. `evaluate` runs an expression in the page (awaited, returned by value).
  */
 export async function openSteamPage(root: string, work: string, chrome = args.chrome!): Promise<SteamPage> {
+  const indexHtml = await Bun.file(join(root, "index.html")).text();
+  const isVite = isViteHtml(indexHtml);
+  const footerCache = new Map<string, string>();
   const server = Bun.serve({ port: 0, hostname: "127.0.0.1", async fetch(req) {
     const path = decodeURIComponent(new URL(req.url).pathname);
     const file = Bun.file(join(root, path));
-    if (!path.includes("..") && await file.exists()) return new Response(file);
+    if (!path.includes("..") && await file.exists()) {
+      if (isVite && path.endsWith(".js") && !path.startsWith("/probe/")) {
+        const src = await file.text();
+        let footer = footerCache.get(path);
+        if (footer === undefined) {
+          const names = extractTopLevelMutableNames(src);
+          footer = buildRegistrationFooter(basename(path), names);
+          footerCache.set(path, footer);
+        }
+        return new Response(src + footer, { headers: { "content-type": "application/javascript; charset=utf-8" } });
+      }
+      return new Response(file);
+    }
     // SharedJSContext runs at /routes/...; the app is a single page.
     return path.startsWith("/routes/") ? new Response(Bun.file(join(root, "index.html"))) : new Response(null, { status: 404 });
   } });
@@ -309,6 +437,7 @@ export async function openSteamPage(root: string, work: string, chrome = args.ch
     const { sessionId } = await browser.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
     await browser.send("Page.enable", {}, sessionId);
     await browser.send("Page.addScriptToEvaluateOnNewDocument", { source: STUB }, sessionId);
+    if (isVite) await browser.send("Page.addScriptToEvaluateOnNewDocument", { source: VITE_ESM_SHIM }, sessionId);
     await browser.send("Page.navigate", { url: `http://127.0.0.1:${server.port}/routes/library/home/` }, sessionId);
     await Bun.sleep(BOOT_MS);
     const page = browser;
@@ -318,7 +447,7 @@ export async function openSteamPage(root: string, work: string, chrome = args.ch
       if (exceptionDetails) throw new Error(`page evaluation failed: ${JSON.stringify(exceptionDetails).slice(0, 500)}`);
       return result.value;
     };
-    return { evaluate, close };
+    return { evaluate, close, isVite };
   } catch (e) {
     await close();
     throw e;
@@ -455,15 +584,24 @@ async function repairReports(runs: RepairRun[], ui: string) {
   }
 }
 
-function failures(label: string, out: ProbeResult) {
+export function isExtraPassing(name: string, count: number | string, isVite: boolean): boolean {
+  if (count === 1) return true;
+  return isVite && count === 0 && VITE_OPTIONAL_EXTRAS.has(name);
+}
+
+function failures(label: string, out: ProbeResult, isVite = false) {
   const bad = [...Object.entries(out.boot), ...Object.entries(out.files), ...Object.entries(out.loader)]
     .filter(([k, v]) => k !== "modules" && v !== true && v !== "ok")
     .map(([k, v]) => `${k}: ${v === false ? "missing" : v}`);
+  if (typeof out.boot.modules === "number" && out.boot.modules === 0) bad.push("modules: 0 loaded");
   const extraResults = Object.entries(out.extras);
-  bad.push(...extraResults.filter(([, count]) => count !== 1)
+  bad.push(...extraResults.filter(([name, count]) => !isExtraPassing(name, count, isVite))
     .map(([name, count]) => `extras:${name}: ${typeof count === "number" ? `${count} matches` : count}`));
-  console.log(`${label}: ${out.boot.modules ?? 0} modules; ${bad.length ? bad.length + " failing" : "all finders ok"}`);
-  for (const [name, count] of extraResults) console.log(`  extras:${name}: ${typeof count === "number" ? `${count} matches` : count}`);
+  console.log(`${label}: ${out.boot.modules ?? 0} modules${isVite ? " (Vite ESM)" : ""}; ${bad.length ? bad.length + " failing" : "all finders ok"}`);
+  for (const [name, count] of extraResults) {
+    const note = isVite && count === 0 && VITE_OPTIONAL_EXTRAS.has(name) ? " (optional on Vite)" : "";
+    console.log(`  extras:${name}: ${typeof count === "number" ? `${count} matches` : count}${note}`);
+  }
   for (const line of bad.filter((line) => !line.startsWith("extras:"))) console.log(`  ${line}`);
   return bad;
 }
@@ -502,15 +640,15 @@ if (import.meta.main) {
       const files = await buildProbe(root, runWork);
       const page = await openSteamPage(root, runWork);
       pages.push(page);
-      const out = await page.evaluate<ProbeResult>(PROBE(files));
-      if (args["props-dir"] && Object.values(out.extras).every((count) => count === 1)) {
+      const out = await page.evaluate<ProbeResult>(PROBE(files, args["extras-only"]));
+      if (args["props-dir"] && !page.isVite && Object.values(out.extras).every((count) => count === 1)) {
         out.factories = await page.evaluate<Record<string, string>>(`(() => {
           let require;
           window.webpackChunksteamui.push([[Symbol("prop-surface")], {}, (r) => { require = r; }]);
           return Object.fromEntries(Object.entries(require.m).map(([id, factory]) => [id, Function.prototype.toString.call(factory)]));
         })()`);
       }
-      const bad = failures(label, out);
+      const bad = failures(label, out, page.isVite);
       runs.push({ label, report, page, out, bad });
       if (args["report-dir"]) await (bad.length ? writeReport(report, label, ui, bad) : Bun.write(join(args["report-dir"], `${report}.ok`), ""));
       // Only a clean run is a baseline: the workflow keeps the first file per version forever, so a
