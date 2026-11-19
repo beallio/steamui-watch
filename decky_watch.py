@@ -21,7 +21,7 @@ from typing import NamedTuple
 from css_mappings import BRANCHES, download_sources, extract_class_modules, fetch_manifest
 from vite_css import is_vite_bundle
 
-LOADER = "decky-loader 724cdbe58ead96c41c4e6d156a6015e136946f8f"
+LOADER = "decky-loader 824d31caa8d1a34aca57e7043152b27d068f8302"
 
 _SIMPLE_BACKTICK_RE = re.compile(r'`([^`\\\n\r"]*?)`')
 _LET_DESTRUCTURE_RE = re.compile(r'\blet\{')
