@@ -503,6 +503,24 @@ class DeckyWatchTest(WorkflowTest):
             ("Decky finders failing with @decky/ui 4.16.0 in beta 200", "closed")],
             "only the passing check closes; an older version's pass does not; a newer latest closes an older one's report")
 
+    def test_upstream_tracker_updates_one_rolling_issue_and_closes_on_pass(self):
+        self.assertEqual(self.watch({"upstream": "beta-200"}), [
+            ("Upstream @decky/ui Vite compatibility tracker", "open")])
+        self.assertEqual(self.state["issues"][0]["body"], "upstream beta-200\n")
+
+        self.assertEqual(self.watch({"upstream": "beta-201"}), [
+            ("Upstream @decky/ui Vite compatibility tracker", "open")],
+            "a newer beta version updates the same rolling tracker instead of opening a second issue")
+        self.assertEqual(self.state["issues"][0]["body"], "upstream beta-201\n")
+
+        self.assertEqual(self.watch(passed={"upstream": "beta-202"}), [
+            ("Upstream @decky/ui Vite compatibility tracker", "closed")],
+            "a publicbeta pass closes the upstream tracker")
+
+        self.assertEqual(self.watch({"upstream": "beta-203"}), [
+            ("Upstream @decky/ui Vite compatibility tracker", "closed")],
+            "a closed tracker is not reopened automatically")
+
 
 class DeckyCopiesTest(WorkflowTest):
     """Report when the decky-loader fork moves past the loader finder copies in this repo."""
