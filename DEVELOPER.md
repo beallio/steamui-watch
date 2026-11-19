@@ -50,7 +50,7 @@ uv run --no-project --python 3.14 python -m unittest discover -s tests
 
 The `mapping-data` branch has its own PR/push check for those tests and the real retained pipeline. Keep its reviewed transition maps, raw inputs and legacy class-name seeds; do not regenerate all matches and overwrite hand corrections. For a history repair, compare every output, retain all older class names and aliases, and review changed destinations before publication.
 
-The tool gets Valve's current stable and beta versions, downloads bundles it has not seen, checks their SHA-256 hashes, and extracts CSS class modules. It then runs the DeckThemes pipeline to produce `stable.json` and `beta.json` in the data checkout. It checks that both outputs have the expected JSON structure. This takes a few minutes and does not publish anything.
+The tool gets Valve's current stable and beta versions, downloads bundles it has not seen, checks their SHA-256 hashes, and extracts CSS class modules. For Vite/Rolldown bundles (where Webpack is absent and most CSS property names are tree-shaken out of JavaScript), `vite_css.py` matches classes against the previous retained dump using surviving JS objects, identity matches, and irreversible SHA-256 CSS-rule/keyframe fingerprints retained at `css-fingerprints/{stable,beta}.json.gz` (zero raw CSS stored). It then runs the DeckThemes pipeline to produce `stable.json` and `beta.json` in the data checkout. It checks that both outputs have the expected JSON structure. This takes a few minutes and does not publish anything.
 
 | Option | What it does |
 |---|---|

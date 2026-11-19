@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - css_mappings.py
+      - vite_css.py
       - mapping_changes.py
       - packages/decky-extras/**
       - tools/runtime_probe.ts
@@ -52,6 +53,9 @@ jobs:
           git -C "$TMPDIR/mappings" config user.name 'github-actions[bot]'
           git -C "$TMPDIR/mappings" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git -C "$TMPDIR/mappings" add webpack webpack-mappings webpack-literals
+          if [ -d "$TMPDIR/mappings/css-fingerprints" ]; then
+            git -C "$TMPDIR/mappings" add css-fingerprints
+          fi
           if ! git -C "$TMPDIR/mappings" diff --cached --quiet; then
             git -C "$TMPDIR/mappings" commit -m 'chore(mappings): retain Steam Deck class history'
             git -C "$TMPDIR/mappings" push origin HEAD:mapping-data

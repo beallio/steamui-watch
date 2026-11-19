@@ -80,6 +80,12 @@ class PipelineOutputTest(unittest.TestCase):
                 (repo / "webpack-literals").mkdir()
                 for suffix in css_mappings.BRANCHES.values():
                     (repo / "webpack-literals" / f"100.{suffix}.json").write_text("[]")
+                (repo / "css-fingerprints").mkdir()
+                for suffix in css_mappings.BRANCHES.values():
+                    css_mappings.vite_css.save_fingerprint(
+                        repo / "css-fingerprints" / f"{suffix}.json.gz",
+                        {"schema": 1, "version": "100", "bundler": "webpack", "rules": [], "keyframes": {}},
+                    )
                 generator = "from pathlib import Path\n"
                 for name, payload in outputs.items():
                     content = payload if isinstance(payload, str) else json.dumps(payload)
@@ -129,6 +135,102 @@ class PipelineOutputTest(unittest.TestCase):
                 self.assertEqual(css_mappings.main([str(repo), "--branch", "stable", "--no-pipeline"]), 0)
             self.assertEqual((repo / "webpack" / "100.stable.json").read_text(), retained)
             self.assertEqual(json.loads((repo / "webpack-literals" / "100.stable.json").read_text()), ["Launch"])
+            fp = css_mappings.vite_css.load_fingerprint(repo / "css-fingerprints" / "stable.json.gz")
+            self.assertEqual(fp["version"], "100")
+
+    def test_vite_publicbeta_bootstraps_from_stable_fingerprint_and_excludes_vite_hashes_from_literals(self):
+        stable_bundle = {
+            "sp.js": '10:(e=>{e.exports={Button:"_oldButton",Label:"_oldLabel","duration-app-launch":"800ms"}})',
+            "sp.css": "._oldButton{display:flex;width:123px}._oldButton ._oldLabel{color:#fff}.Launch{opacity:1}",
+        }
+        beta_bundle = {
+            "library.js": 'const __vite__mapDeps=()=>[];var a=`newButton12-`,b=`newLabel123-`;',
+            "css/chunk~1.css": (
+                ".newButton12-{width:123px;display:flex}"
+                ".newButton12- .newLabel123-{color:#fff}"
+                ".unmatched12-{margin:4px}.Launch{opacity:1}"
+            ),
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "webpack").mkdir()
+            for script in css_mappings.PIPELINE:
+                (repo / script).touch()
+            # Stable 100 dump and literals already retained; fingerprint missing (first-run bootstrap!).
+            (repo / "webpack" / "100.stable.json").write_text(
+                json.dumps({"10": {"Button": "_oldButton", "Label": "_oldLabel", "duration-app-launch": "800ms"}})
+            )
+            (repo / "webpack" / "100.beta.json").write_text(
+                json.dumps({"10": {"Button": "_oldButton", "Label": "_oldLabel", "duration-app-launch": "800ms"}})
+            )
+            (repo / "webpack-literals").mkdir()
+            (repo / "webpack-literals" / "100.stable.json").write_text('["Launch"]')
+            (repo / "webpack-literals" / "100.beta.json").write_text('["Launch"]')
+
+            def fake_manifest(branch):
+                return ("100", {"b": "stable"}) if branch == "stable" else ("200", {"b": "beta"})
+
+            def fake_download(fields):
+                return stable_bundle if fields["b"] == "stable" else beta_bundle
+
+            with (
+                mock.patch.object(css_mappings, "fetch_manifest", side_effect=fake_manifest),
+                mock.patch.object(css_mappings, "download_bundle", side_effect=fake_download),
+                mock.patch.object(css_mappings, "MIN_MODULES", 1),
+            ):
+                self.assertEqual(css_mappings.main([str(repo), "--no-pipeline"]), 0)
+
+            self.assertEqual(
+                json.loads((repo / "webpack" / "200.beta.json").read_text()),
+                {"10": {"Button": "newButton12-", "Label": "newLabel123-", "duration-app-launch": "800ms"}},
+            )
+            # Unmatched Vite hash `unmatched12-` must NOT leak into webpack-literals!
+            self.assertEqual(json.loads((repo / "webpack-literals" / "200.beta.json").read_text()), ["Launch"])
+            self.assertEqual(
+                css_mappings.vite_css.load_fingerprint(repo / "css-fingerprints" / "beta.json.gz")["version"],
+                "200",
+            )
+
+    def test_vite_shared_version_reuses_other_branch_dump(self):
+        beta_dump = {"10": {"Button": "newButton12-"}}
+        vite_bundle = {
+            "library.js": "const __vite__mapDeps=()=>[];",
+            "css/chunk~1.css": ".newButton12-{width:123px}.Launch{opacity:1}",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "webpack").mkdir()
+            for script in css_mappings.PIPELINE:
+                (repo / script).touch()
+            (repo / "webpack" / "200.beta.json").write_text(json.dumps(beta_dump))
+            with (
+                mock.patch.object(css_mappings, "fetch_manifest", return_value=("200", {})),
+                mock.patch.object(css_mappings, "download_bundle", return_value=vite_bundle),
+                mock.patch.object(css_mappings, "MIN_MODULES", 1),
+            ):
+                self.assertEqual(css_mappings.main([str(repo), "--branch", "stable", "--no-pipeline"]), 0)
+            self.assertEqual(json.loads((repo / "webpack" / "200.stable.json").read_text()), beta_dump)
+
+    def test_broken_vite_bundle_below_min_modules_still_fails(self):
+        vite_bundle = {"library.js": "const __vite__mapDeps=()=>[];", "css/chunk~1.css": ".otherHash12-{color:red}"}
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "webpack").mkdir()
+            (repo / "css-fingerprints").mkdir()
+            for script in css_mappings.PIPELINE:
+                (repo / script).touch()
+            (repo / "webpack" / "100.beta.json").write_text('{"10": {"Button": "_old"}}')
+            css_mappings.vite_css.save_fingerprint(
+                repo / "css-fingerprints" / "beta.json.gz",
+                {"schema": 1, "version": "100", "bundler": "webpack", "rules": [], "keyframes": {}},
+            )
+            with (
+                mock.patch.object(css_mappings, "fetch_manifest", return_value=("200", {})),
+                mock.patch.object(css_mappings, "download_bundle", return_value=vite_bundle),
+                mock.patch.object(css_mappings, "MIN_MODULES", 1),
+                self.assertRaisesRegex(SystemExit, "only 0 class modules"),
+            ):
+                css_mappings.main([str(repo), "--branch", "publicbeta", "--no-pipeline"])
 
 class ValidateMatchesTest(unittest.TestCase):
     """Old 1 and 2 exist in version 100; 1 survives into 200, and 3 and 4 are new there."""
