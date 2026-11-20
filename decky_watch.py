@@ -21,7 +21,7 @@ from typing import NamedTuple
 from css_mappings import BRANCHES, download_sources, extract_class_modules, fetch_manifest
 from vite_css import is_vite_bundle
 
-LOADER = "decky-loader 824d31caa8d1a34aca57e7043152b27d068f8302"
+LOADER = "decky-loader 5dbd8d109838427c05666428c5bde5f90a6554bb"
 
 _SIMPLE_BACKTICK_RE = re.compile(r'`([^`\\\n\r"]*?)`')
 _LET_DESTRUCTURE_RE = re.compile(r'\blet\{')
@@ -105,7 +105,6 @@ FINDERS = (
     code(LOADER, "filepicker: history", re.compile(r"UpdateRoutingInfo\([\w$]+,[\w$]+\)\{this\.m_history=[\w$]+"),
          ".UpdateRoutingInfo("),
     classes(LOADER, "Markdown: EventDetailsBody", "EventDetailsBody"),
-    classes(LOADER, "Markdown: event link", "Link", module="43088"),
     classes(LOADER, "Toast: templateClasses", "ShortTemplate"),
     classes(LOADER, "DropdownMultiselect: classes", "DropDownControlButton", "duration-app-launch"),
     classes(LOADER, "Store: TabCount", "TabCount", "TabTitle"),
