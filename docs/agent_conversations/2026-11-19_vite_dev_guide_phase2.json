@@ -1,0 +1,35 @@
+{
+  "date": "2026-11-19",
+  "task_objective": "Phase 2 & 3 completion: add visual component/icon previews (--with-previews), plain-English descriptions & Steam Deck screen placement maps, expand @beallio/decky-extras by 12 verified visual components (v0.2.0 rev 3), fix SteamSpinner asset inlining, GamepadMode/gpfocus scoping, 4-segment ESM namespace/RPC matching, and wire public metadata-only /guide/ publishing into publish-mappings.yml with strict failure isolation.",
+  "files_modified": [
+    "tools/dev_guide_docs.ts",
+    "tools/dev_guide_schema.ts",
+    "tools/dev_guide_extract.ts",
+    "tools/dev_guide_client.js",
+    "tools/dev_guide_html.ts",
+    "tools/dev_guide.ts",
+    "tools/dev_guide.test.ts",
+    "tools/decky_catalog.ts",
+    "packages/decky-extras/extras.json",
+    "packages/decky-extras/package.json",
+    ".github/workflows/publish-mappings.yml",
+    "tests/test_workflows.py",
+    "README.md",
+    "DEVELOPER.md"
+  ],
+  "tests_added": [
+    "tools/dev_guide.test.ts (expanded to 19 tests covering descriptions/placements, preview boundary enforcement, SteamSpinner asset inlining, GamepadMode CSS scoping, and 4-segment ESM namespace/RPC matching)",
+    "tests/test_workflows.py::GuidePublicationTest (3 workflow regression tests verifying failed-guide recovery preserves published /guide/ + fresh CSS, first-run failure does not block CSS publication, and CI never passes --with-previews)"
+  ],
+  "design_decisions": [
+    "Kept public CI build strictly metadata-only (no --with-previews), retaining previous /guide/ on failure and never blocking {stable,beta}.json or decky-extras.json.",
+    "Cached metadata-only Webpack baseline at finder-data:baselines/webpack-latest.json so 6-hour CI runs reuse it without re-booting Webpack Chrome and keep working after stable migrates to Vite.",
+    "Inlined ephemeral localhost image/font URLs inside --with-previews as base64 data URIs and scoped html.GamepadMode selectors onto .preview-stage.GamepadMode with a gpfocus simulator toggle."
+  ],
+  "results": {
+    "python_unittest": "82/82 passed",
+    "ty_check": "All checks passed",
+    "bun_test": "80/80 passed (318 assertions)",
+    "extras_probe": "All 33 decky-extras verified on live stable 1794536281 and publicbeta 1795048523"
+  }
+}

@@ -229,6 +229,103 @@ class ExtrasPublicationTest(WorkflowTest):
         self.assertEqual(json.loads((site / "beta.json").read_text()), {"beta": "new"})
 
 
+@unittest.skipUnless(shutil.which("bun"), "needs Bun for guide metadata validation")
+class GuidePublicationTest(WorkflowTest):
+    def _valid_guide_data(self):
+        return {
+            "schemaVersion": 1,
+            "generatedAt": "2026-11-19T00:00:00.000Z",
+            "beta": {"branch": "publicbeta", "version": "1795048523", "isVite": True, "chunkCount": 1, "moduleCount": 1},
+            "webpackBaseline": {"branch": "stable", "version": "1794536281", "exportCount": 1},
+            "stats": {
+                "cssModules": 0, "cssClasses": 0, "cssMatched": 0, "cssUnmatched": 0, "plainClasses": 0,
+                "exports": 0, "verifiedExports": 0, "inferredExports": 0, "unmatchedExports": 0,
+                "webpackMatchedExports": 0, "icons": 0, "chunks": 0,
+            },
+            "featureAreas": [],
+            "cssModules": [],
+            "cssClasses": [],
+            "plainClasses": [],
+            "exports": [],
+            "icons": [],
+            "chunks": [],
+        }
+
+    def test_failed_guide_build_keeps_published_guide_and_fresh_css(self):
+        prev_dir = self.tmp / "published-guide"
+        prev_dir.mkdir()
+        prev_data = self._valid_guide_data()
+        (prev_dir / "index.html").write_text("<!DOCTYPE html><title>Published Guide</title>")
+        (prev_dir / "data.json").write_text(json.dumps(prev_data))
+
+        curl = self.tmp / "bin" / "curl"
+        curl.write_text(
+            "#!/usr/bin/env python3\n"
+            "import os, pathlib, shutil, sys\n"
+            "url = [a for a in sys.argv[1:] if a.startswith('http')][0]\n"
+            "out = sys.argv[sys.argv.index('--output') + 1]\n"
+            "name = url.rsplit('/', 1)[-1]\n"
+            "shutil.copyfile(pathlib.Path(os.environ['PUBLISHED_GUIDE_DIR']) / name, out)\n"
+        )
+        curl.chmod(0o755)
+
+        def prepare(runner):
+            site = runner / "steamui-watch" / "site"
+            (site / "guide").mkdir(parents=True)
+            (site / "stable.json").write_text('{"stable":"new"}')
+            (site / "beta.json").write_text('{"beta":"new"}')
+            (site / "decky-extras.json").write_text('{"revision":3}')
+            # Partial/corrupt candidate must be replaced with the last valid published guide.
+            (site / "guide" / "data.json").write_text('{"schemaVersion":999}')
+            (site / "guide" / "index.html").write_text("corrupt")
+
+        result, runner = self.run_step(
+            "publish-mappings.yml",
+            "Retain published developer guide after generation failure",
+            cwd=WORKFLOWS.parent.parent,
+            prepare=prepare,
+            PUBLISHED_GUIDE_DIR=str(prev_dir),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        site = runner / "steamui-watch" / "site"
+        self.assertEqual(json.loads((site / "guide" / "data.json").read_text()), prev_data)
+        self.assertIn("Published Guide", (site / "guide" / "index.html").read_text())
+        self.assertEqual(json.loads((site / "stable.json").read_text()), {"stable": "new"})
+        self.assertEqual(json.loads((site / "beta.json").read_text()), {"beta": "new"})
+
+    def test_failed_guide_build_without_prior_publication_does_not_block_css(self):
+        curl = self.tmp / "bin" / "curl"
+        curl.write_text("#!/bin/sh\nexit 22\n")
+        curl.chmod(0o755)
+
+        def prepare(runner):
+            site = runner / "steamui-watch" / "site"
+            (site / "guide").mkdir(parents=True)
+            (site / "stable.json").write_text('{"stable":"new"}')
+            (site / "beta.json").write_text('{"beta":"new"}')
+            (site / "guide" / "index.html").write_text("partial")
+
+        result, runner = self.run_step(
+            "publish-mappings.yml",
+            "Retain published developer guide after generation failure",
+            cwd=WORKFLOWS.parent.parent,
+            prepare=prepare,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        site = runner / "steamui-watch" / "site"
+        self.assertFalse((site / "guide").exists())
+        self.assertEqual(json.loads((site / "stable.json").read_text()), {"stable": "new"})
+        self.assertEqual(json.loads((site / "beta.json").read_text()), {"beta": "new"})
+
+    def test_guide_workflow_step_is_isolated_and_public_only(self):
+        wf = (WORKFLOWS / "publish-mappings.yml").read_text()
+        self.assertIn("name: Generate and stage developer guide", wf)
+        step_section = wf.split("name: Generate and stage developer guide", 1)[1].split("actions/upload-pages-artifact", 1)[0]
+        self.assertIn("continue-on-error: true", step_section)
+        code_only = "\n".join(line for line in step_section.splitlines() if not line.lstrip().startswith("#"))
+        self.assertNotIn("--with-previews", code_only)
+
+
 class NewMappingIssueTest(WorkflowTest):
     STEP = "Open an issue for new mappings"
 

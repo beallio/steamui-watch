@@ -9,6 +9,9 @@ on:
       - mapping_changes.py
       - packages/decky-extras/**
       - tools/runtime_probe.ts
+      - tools/apply_ui_compat.ts
+      - tools/dev_guide*.ts
+      - tools/dev_guide_client.js
       - package.json
       - bun.lock
       - .github/workflows/publish-mappings.yml
@@ -95,6 +98,71 @@ jobs:
           bun -e 'import { parseManifest } from "./packages/decky-extras/match"; parseManifest(await Bun.file(Bun.argv.at(-1)).json());' "$previous"
           cp "$previous" "$RUNNER_TEMP/steamui-watch/site/decky-extras.json"
           echo "::warning::Extras validation failed. Publishing fresh CSS mappings with the previous extras definitions; skipping the extras release."
+      - name: Generate and stage developer guide
+        id: guide
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          export TMPDIR="$RUNNER_TEMP/steamui-watch"
+          bun install --frozen-lockfile
+          if [ ! -d "$TMPDIR/decky-ui/package" ]; then
+            ui=$(gh api repos/beallio/decky-loader/contents/frontend/pnpm-lock.yaml --jq .content | base64 -d |
+              awk '/^      .@decky\/ui.:$/ && !found { getline; getline; sub(/^ *version: */, ""); sub(/[(].*/, ""); print; found = 1 }')
+            [ -n "$ui" ] || { echo 'no @decky/ui version in the decky-loader lock file' >&2; exit 1; }
+            npm pack "@decky/ui@$ui" --pack-destination "$TMPDIR" --silent
+            mkdir -p "$TMPDIR/decky-ui"
+            tar -xzf "$TMPDIR/decky-ui-$ui.tgz" -C "$TMPDIR/decky-ui"
+          fi
+          gh api repos/beallio/decky-loader/contents/frontend/rollup.config.js --jq .content | base64 -d > "$TMPDIR/guide-rollup.config.js"
+          # Reuse cached metadata-only Webpack baseline from finder-data when available; save once on first run.
+          baseline_args=()
+          if gh repo clone "$GITHUB_REPOSITORY" "$TMPDIR/finder-data" -- --branch finder-data --depth 1 2>/dev/null; then
+            baseline_file="$TMPDIR/finder-data/baselines/webpack-latest.json"
+            if [ -f "$baseline_file" ]; then
+              baseline_args=(--webpack-baseline "$baseline_file")
+            else
+              baseline_args=(--save-webpack-baseline "$baseline_file")
+            fi
+          fi
+          guide_out="$TMPDIR/guide-out"
+          rm -rf "$guide_out"
+          # Public Pages build: strict metadata only (never pass --with-previews).
+          bun tools/dev_guide.ts \
+            --mapping-data "$TMPDIR/mappings" \
+            --out-dir "$guide_out" \
+            --decky-ui "$TMPDIR/decky-ui/package" \
+            --rollup-config "$TMPDIR/guide-rollup.config.js" \
+            "${baseline_args[@]}"
+          if [ -d "$TMPDIR/finder-data/.git" ] && [ -f "$TMPDIR/finder-data/baselines/webpack-latest.json" ]; then
+            git -C "$TMPDIR/finder-data" add baselines/webpack-latest.json
+            if ! git -C "$TMPDIR/finder-data" diff --cached --quiet; then
+              git -C "$TMPDIR/finder-data" -c user.name='github-actions[bot]' \
+                -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+                commit -m 'chore(dev-guide): retain pre-Vite Webpack export baseline'
+              git -C "$TMPDIR/finder-data" push origin HEAD:finder-data || echo "::warning::Could not push cached Webpack baseline to finder-data."
+            fi
+          fi
+          rm -rf "$TMPDIR/site/guide"
+          mkdir -p "$TMPDIR/site/guide"
+          cp "$guide_out/index.html" "$guide_out/data.json" "$TMPDIR/site/guide/"
+      - name: Retain published developer guide after generation failure
+        if: steps.guide.outcome == 'failure'
+        run: |
+          rm -rf "$RUNNER_TEMP/steamui-watch/site/guide"
+          previous="$RUNNER_TEMP/steamui-watch/previous-guide"
+          rm -rf "$previous" && mkdir -p "$previous"
+          if curl --fail --location --silent --show-error --max-time 30 \
+              https://beallio.github.io/steamui-watch/guide/index.html --output "$previous/index.html" \
+            && curl --fail --location --silent --show-error --max-time 30 \
+              https://beallio.github.io/steamui-watch/guide/data.json --output "$previous/data.json" \
+            && bun -e 'import { validatePublicGuideData } from "./tools/dev_guide_schema"; const errs = validatePublicGuideData(await Bun.file(Bun.argv.at(-1)).json()); if (errs.length) throw new Error(errs.join("; "));' "$previous/data.json"; then
+            mkdir -p "$RUNNER_TEMP/steamui-watch/site/guide"
+            cp "$previous/index.html" "$previous/data.json" "$RUNNER_TEMP/steamui-watch/site/guide/"
+            echo "::warning::Developer guide generation failed. Publishing fresh CSS mappings with the previous developer guide."
+          else
+            echo "::warning::Developer guide generation failed and no valid previous guide was available. Publishing fresh CSS mappings without /guide/."
+          fi
       - uses: actions/upload-pages-artifact@v5
         with:
           path: ${{ runner.temp }}/steamui-watch/site

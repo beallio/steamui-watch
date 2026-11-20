@@ -123,6 +123,17 @@ const demos: Record<string, Pick<Candidate, "make" | "width">> = {
   SectionHeader: { make: `h(C,{showRule:true,label:"Section header"},"Section header")` },
   SegmentedCharacterInput: { make: `S("Segmented character input onChange","AB",(v,set)=>h(C,{length:5,value:v,onChange:set}))` },
   CalloutMessage: { make: `h(C,null,"Callout message")` },
+  CompoundSlider: { width: 480, make: `h(C,{label:"Range slider",useLeftRightParen:true,sliders:[{value:25,min:0,max:100,onChange:on("CompoundSlider low")},{value:75,min:0,max:100,onChange:on("CompoundSlider high")}]})` },
+  DialogTwoButton: { width: 480, make: `h(C,{strOKText:"Confirm",strCancelText:"Cancel",onOK:on("DialogTwoButton onOK"),onCancel:on("DialogTwoButton onCancel")})` },
+  DialogThreeButton: { width: 520, make: `h(C,{strOKText:"Apply",strUpdateText:"Update",strCancelText:"Cancel",onOK:on("DialogThreeButton onOK"),onUpdate:on("DialogThreeButton onUpdate"),onCancel:on("DialogThreeButton onCancel")})` },
+  DropDownControlButton: { make: `h(C,{onClick:on("DropDownControlButton onClick")},"Select option")` },
+  DropDownLabelDescription: { make: `h(C,{title:"High Performance",upperDescription:"Recommended",description:"Prioritize 60 FPS frame pacing"})` },
+  DialogReorderableList: { make: `h(C,{onReorder:on("DialogReorderableList onReorder")},h("div",{id:"item-a",style:{padding:"6px 10px"}},"First reorderable item"),h("div",{id:"item-b",style:{padding:"6px 10px"}},"Second reorderable item"))` },
+  PagedSettings: { width: 640, make: `h("div",{style:{height:220}},h(C,{title:"Settings",pages:[{identifier:"general",title:"General",content:h("div",null,"General settings page")},{identifier:"about",title:"About",content:h("div",null,"About settings page")}]}))` },
+  CollapsibleContent: { make: `h(C,{expand:true,collapsible:true},h("div",{style:{padding:8}},"Expanded collapsible content"))` },
+  ExpandableOverflow: { make: `h(C,{pxOverflowHeight:36,expandString:"Show more",collapseString:"Show less"},h("div",null,"Line 1: Clamped overflow content.",h("br"),"Line 2: Extra details stay hidden until expanded.",h("br"),"Line 3: Third line triggers Show more."))` },
+  SquareActionButton: { make: `h(C,{variant:"primary",onClick:on("SquareActionButton onClick"),style:{padding:"8px 16px"}},"Action Button")` },
+  SteamAvatar: { make: `h(C,{size:"Medium",statusPosition:"right"})` },
 };
 export const CANDIDATES: Candidate[] = Object.entries(extrasData.components as Record<string, CandidateData>).map(([id, data]) => ({
   id, name: data.title, why: data.description, find: data.find, ...demos[id],
