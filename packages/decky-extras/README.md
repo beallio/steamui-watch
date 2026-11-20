@@ -7,7 +7,7 @@ This package provides stable React wrappers for selected Steam UI components tha
 Install the immutable package tarball as a dependency (no npm login is required):
 
 ```sh
-npm install https://github.com/beallio/steamui-watch/releases/download/decky-extras-v0.1.0/beallio-decky-extras-0.1.0.tgz
+npm install https://github.com/beallio/steamui-watch/releases/download/decky-extras-v0.2.0/beallio-decky-extras-0.2.0.tgz
 ```
 
 Keep `react` and `@decky/ui` as the plugin's runtime peers. The standard Decky Rollup setup maps `react` to Steam's `SP_REACT` and `@decky/ui` to the installed Decky frontend library; bundle `@beallio/decky-extras` itself into the plugin. The supported minimum is official `@decky/ui` 4.15.1 (public `createModuleMapping`) and React 16.8 (hooks and `forwardRef`). The package does not import a bundled copy of either peer.
