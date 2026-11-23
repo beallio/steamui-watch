@@ -1,6 +1,8 @@
 # `@beallio/decky-extras`
 
-This package provides stable React wrappers for selected Steam UI components that are not exported by name from the public `@decky/ui` API. It uses Steam's module map and a small, validated finder manifest; it does not evaluate downloaded code or depend on fork-only APIs.
+This package provides stable React wrappers for selected Steam UI components that are not exported by name from the public `@decky/ui` API, plus selected Steam functions and objects. It uses Steam's module map and a small, validated finder manifest; it does not evaluate downloaded code or depend on fork-only APIs.
+
+New to the package? Read the [guide with examples of what to build](https://github.com/beallio/steamui-watch/blob/main/packages/decky-extras/GUIDE.md).
 
 ## Install in a plugin
 
@@ -90,6 +92,8 @@ To generate the reference locally, see [prop discovery in the developer guide](.
 ## Compatibility limits
 
 Steam components are internal, version-dependent implementations. A finder must identify exactly one distinct Steam object; zero or multiple matches are exposed as unavailable, never guessed. The generated declarations use the exact component-name union but intentionally accept open props as `unknown`: this package does not promise undocumented Steam prop names, callback types, or compatibility across Steam updates. A unique source match does not prove that a component's prop contract stayed the same.
+
+`CalloutMessage` is not found on Steam clients that load as ES modules (Steam Beta since 1795048523): its code there contains no text that tells it apart. Use `findExtra("CalloutMessage")` with a fallback if you need it on both.
 
 These components are intended for the normal Decky plugin tree in Steam Gaming Mode. Some rely on Steam's React context, CSS, controller-focus setup, or live Steam state and may render incorrectly or do nothing in a browser, desktop mode, or a tree without the corresponding native providers. The package does not create those providers or substitute fake official APIs.
 

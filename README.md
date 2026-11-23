@@ -23,7 +23,7 @@ When Valve updates the Steam Deck interface, it often scrambles the internal nam
 **If you build themes or Decky plugins:**
 
 - Browse the [Steam Deck Interface Guide](https://beallio.github.io/steamui-watch/guide/) to search controls, screen areas, and theme names, or use its built-in paste translator to update a theme for the beta. (The raw [guide data](https://beallio.github.io/steamui-watch/guide/data.json) is also public.)
-- Read [Decky extras](packages/decky-extras/README.md) to add 34 extra Steam controls, and other Steam objects, to a plugin.
+- Read [Decky extras](packages/decky-extras/README.md) to add 34 extra Steam controls, and other Steam objects, to a plugin. The [guide](packages/decky-extras/GUIDE.md) shows how to start and what you can build.
 - Download the live theme translation lists directly if you need them:
   - [Stable theme list](https://beallio.github.io/steamui-watch/stable.json) (normal Steam Deck release)
   - [Beta theme list](https://beallio.github.io/steamui-watch/beta.json) (Steam Deck beta)

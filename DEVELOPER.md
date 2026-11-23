@@ -175,6 +175,8 @@ The publishing workflow runs the probe, then `packages/decky-extras/feed.ts` wri
 
 Plugin packages download the definitions on first use, keep validated data in `localStorage`, refresh hourly while mounted, and retry after a minute on failure. Downloads that would lose a working finder are rejected before replacing the cache. See the package README for unload cleanup and explicit fallback behavior.
 
+Before a package release that changes runtime code, test it in a plugin in Gaming Mode as [the guide describes](packages/decky-extras/GUIDE.md#4-test-in-gaming-mode): build a small plugin that uses the new package, install it from a ZIP on a Deck or the SteamOS VM, and check that the extras draw and respond, that `findSteamValue` returns live objects, and that the feed downloads. Uninstall the test plugin afterwards; the install adds it to the loader's `pluginOrder`, and uninstalling removes it again.
+
 For a runtime implementation change, increase the package version and build it:
 
 ```sh
