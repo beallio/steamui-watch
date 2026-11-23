@@ -476,6 +476,13 @@ if (import.meta.main) {
       ? { label: "local", root: resolve(args["bundle-dir"]), report: "local" }
       : await fetchBundle(args.branch!, work);
     const isVite = isViteHtml(await Bun.file(join(bundle.root, "index.html")).text());
+    // shortcut: @decky/ui 5 needs Steam's origin and the CDP scope binding, which only openSteamPage gives;
+    // a live ES-module page needs the user's browser driven over CDP.
+    if (args.serve && isVite) {
+      console.error(`${bundle.label}: --serve supports Webpack clients only; use the static output for ES-module clients`);
+      await cleanup();
+      process.exit(2);
+    }
     const boot = BOOT(isVite);
     const uiPackage = resolve(isVite ? args["decky-ui-esm"]! : args["decky-ui-webpack"]!);
     await buildProbe(bundle.root, work, uiPackage, isVite, ["index.js"]);

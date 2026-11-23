@@ -151,7 +151,7 @@ To try the controls in a browser:
 bun tools/decky_catalog.ts --serve
 ```
 
-Open the printed local address in Chrome or Chromium. The page runs Steam's code: toggles switch, sliders move, and supported menus and dialogs open. An event log shows callbacks. Stop it with Ctrl-C. Controller navigation, sounds, and features that need a running Steam client do not work there.
+Open the printed local address in Chrome or Chromium. The page runs Steam's code: toggles switch, sliders move, and supported menus and dialogs open. An event log shows callbacks. Stop it with Ctrl-C. Controller navigation, sounds, and features that need a running Steam client do not work there. `--serve` supports Webpack clients only: `@decky/ui` 5 on an ES-module client needs Steam's origin and the CDP scope lookup that only the headless run provides, so it stops with status 2. Use the static output for ES-module clients.
 
 These tools also accept `--bundle-dir DIR` to use an extracted `steamui` directory, and `--decky-ui-webpack PATH` and `--decky-ui-esm PATH` to select the library for each bundle format. Finders and minified module/export keys must be checked on each Steam build; a unique match is not a guarantee of future compatibility.
 
