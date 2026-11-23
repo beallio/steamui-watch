@@ -365,7 +365,7 @@ export function describeExport(info: {
   const curated = CURATED_EXPORTS[info.name];
   if (curated) return curated;
 
-  const extraDef = (extrasData.components as Record<string, { title: string; description: string }>)[info.name];
+  const extraDef = (extrasData.extras as Record<string, { title: string; description: string }>)[info.name];
   if (extraDef) {
     return {
       description: `${extraDef.description} (Available via @beallio/decky-extras without modifying DFL.)`,

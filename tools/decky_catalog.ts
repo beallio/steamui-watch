@@ -17,7 +17,7 @@ import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { BOOT, buildProbe, fetchBundle, isViteHtml, openSteamPage, STUB } from "./runtime_probe";
 import extrasData from "../packages/decky-extras/extras.json";
-import { matchExtras } from "../packages/decky-extras/match";
+import { componentsOf, matchExtras, parseManifest } from "../packages/decky-extras/match";
 
 const repo = resolve(import.meta.dir, "..");
 
@@ -135,7 +135,7 @@ const demos: Record<string, Pick<Candidate, "make" | "width">> = {
   SquareActionButton: { make: `h(C,{variant:"primary",onClick:on("SquareActionButton onClick"),style:{padding:"8px 16px"}},"Action Button")` },
   SteamAvatar: { make: `h(C,{size:"Medium",statusPosition:"right"})` },
 };
-export const CANDIDATES: Candidate[] = Object.entries(extrasData.components as Record<string, CandidateData>).map(([id, data]) => ({
+export const CANDIDATES: Candidate[] = Object.entries(componentsOf(parseManifest(extrasData)) as Record<string, CandidateData>).map(([id, data]) => ({
   id, name: data.title, why: data.description, find: data.find, ...demos[id],
 }));
 

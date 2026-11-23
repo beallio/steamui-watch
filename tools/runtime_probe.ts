@@ -32,7 +32,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import extrasData from "../packages/decky-extras/extras.json";
-import { matchExtras, parseManifest } from "../packages/decky-extras/match";
+import { componentsOf, matchExtras, parseManifest } from "../packages/decky-extras/match";
 import { analyzeProps } from "./prop_surface";
 import { readSource } from "./finder_table";
 import { checkRepair, loadBaseline, makeRepair, rankCandidates, type Candidate } from "./finder_repair";
@@ -65,8 +65,9 @@ const { values: args } = parseArgs({
   },
 });
 
-// Extras whose minified Vite body cannot be uniquely matched with schema-1 positive literals;
-// strictly required on Webpack Stable, allowed to be 0 matches on Vite Beta.
+// Extras whose minified Vite body has no literal text to match; `not` atoms cannot help, they only narrow.
+// Beta CalloutMessage is `({children,className})=>div(cls(A,className),[div(B),div(cls(B,C)),children])` with hashed
+// class constants. Strictly required on Webpack Stable, allowed to be 0 matches on Vite Beta.
 export const VITE_OPTIONAL_EXTRAS = new Set(["CalloutMessage"]);
 
 /** decky-loader's IS_ESM_CLIENT test (frontend/src/stable/client.ts): library.js loads as a module script. */
@@ -158,7 +159,7 @@ const PROBE = (files: string[], isVite: boolean, extrasOnly = false) => `(async 
     boot: {},
     files: {},
     loader: {},
-    extras: Object.fromEntries(Object.keys(manifest.components).map((name) => [name, "unavailable"])),
+    extras: Object.fromEntries(Object.keys(manifest.extras).map((name) => [name, "unavailable"])),
     snapshot: {},
   };
   let W, C;
@@ -672,7 +673,7 @@ if (import.meta.main) {
         await Bun.write(join(args["snapshot-dir"], `${report}.decky-ui-${ui}.json`), JSON.stringify(snapshot, null, 2) + "\n");
       }
       if (args["props-dir"] && out.factories) {
-        const entries = Object.fromEntries(Object.keys(extras.components).map((name) => {
+        const entries = Object.fromEntries(Object.keys(componentsOf(extras)).map((name) => {
           const at = out.snapshot["extras:" + name]?.at;
           if (!at?.length) throw new Error(`${label}: ${name} has no exported identity for prop analysis`);
           return [name, at];

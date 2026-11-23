@@ -7,7 +7,7 @@ This package provides stable React wrappers for selected Steam UI components tha
 Install the immutable package tarball as a dependency (no npm login is required):
 
 ```sh
-npm install https://github.com/beallio/steamui-watch/releases/download/decky-extras-v0.3.0/beallio-decky-extras-0.3.0.tgz
+npm install https://github.com/beallio/steamui-watch/releases/download/decky-extras-v0.4.0/beallio-decky-extras-0.4.0.tgz
 ```
 
 Keep `react` and `@decky/ui` as the plugin's runtime peers. The standard Decky Rollup setup maps `react` to Steam's `SP_REACT` and `@decky/ui` to the installed Decky frontend library; bundle `@beallio/decky-extras` itself into the plugin. The supported minimum is official `@decky/ui` 4.15.1 (public `createModuleMapping`) and React 16.8 (hooks and `forwardRef`); `@decky/ui` 5.x also works. On Steam ES-module clients, the package uses `createScopeMapping` when available; official 4.x clients fall back to `createModuleMapping`. Finder text atoms support both quote styles used in Steam bundles. The package does not import a bundled copy of either peer.
@@ -51,15 +51,29 @@ onDismount() {
 }
 ```
 
+### Steam functions and objects
+
+Some entries are not components but Steam functions, classes or objects, such as stores. `findSteamValue(name)` returns the one matched value or `null`, and starts a refresh if one is due:
+
+```ts
+import { findSteamValue } from "@beallio/decky-extras";
+
+const history = findSteamValue("RouterHistoryStore") as { m_history?: unknown } | null;
+```
+
+The result is `unknown`: cast it to the shape your plugin needs and check it before use. Objects and functions are Steam's live values, so their fields change as Steam runs. Numbers and strings are never offered, because on ES-module clients they would be copies taken when the loader started. Like `findExtra`, this is a snapshot; call it again after `refreshExtras()`.
+
 ## Definitions and cache
 
 The package ships with the canonical finder definitions in its bundle and fetches newer data from:
 
-`https://beallio.github.io/steamui-watch/decky-extras.json`
+`https://beallio.github.io/steamui-watch/decky-extras-v2.json`
 
-The request is deferred until the first wrapper mount, `findExtra` call, or explicit `refreshExtras` call, so importing the package does not block plugin startup. Each response must be successful, readable within 10 seconds, no larger than 64 KiB, valid UTF-8 JSON, and valid schema-1 finder data before it can change the in-memory definitions or `localStorage` cache. The browser request uses `cache: "no-cache"`; no ETag is required.
+Packages before 0.4.0 read `decky-extras.json`, which keeps the older format and lists components only.
 
-Validated downloaded definitions are cached in localStorage. If storage is blocked, unavailable, full, or malformed, the package continues with the bundled or in-memory definitions. On startup it uses only a cache revision newer than the bundle. Older downloads never replace newer definitions; a changed payload must increment `revision`, even if the change is only a finder correction. Failed requests retain the last-good definitions, retry after one minute while wrappers are mounted, and retry hourly after success while mounted. Definitions are data only: clauses combine with AND and each clause's fixed `text`/`member`/`binding` atoms combine with OR; downloads cannot provide regexes or executable code.
+The request is deferred until the first wrapper mount, `findExtra` or `findSteamValue` call, or explicit `refreshExtras` call, so importing the package does not block plugin startup. Each response must be successful, readable within 10 seconds, no larger than 64 KiB, valid UTF-8 JSON, and valid schema-2 finder data before it can change the in-memory definitions or `localStorage` cache. The browser request uses `cache: "no-cache"`; no ETag is required.
+
+Validated downloaded definitions are cached in localStorage. If storage is blocked, unavailable, full, or malformed, the package continues with the bundled or in-memory definitions. On startup it uses only a cache revision newer than the bundle. Older downloads never replace newer definitions; a changed payload must increment `revision`, even if the change is only a finder correction. Failed requests retain the last-good definitions, retry after one minute while wrappers are mounted, and retry hourly after success while mounted. Definitions are data only: clauses combine with AND and each clause's fixed `text`/`member`/`binding`/`key` atoms (or their `not` forms) combine with OR; downloads cannot provide regexes or executable code. An update that changes the kind of a name the package was built with (for example, component to object) is rejected.
 
 If a downloaded update makes a working finder missing or ambiguous, the entire update is rejected before it replaces the cache. The previous definitions stay usable across plugin reloads. A component that never uniquely matched remains unavailable.
 

@@ -1,7 +1,7 @@
 import { matchExtras, parseManifest, type Manifest } from "./match";
 
-export const EXTRAS_URL = "https://beallio.github.io/steamui-watch/decky-extras.json";
-const CACHE_KEY = "beallio:decky-extras:v1";
+export const EXTRAS_URL = "https://beallio.github.io/steamui-watch/decky-extras-v2.json";
+const CACHE_KEY = "beallio:decky-extras:v2";
 const MAX_MANIFEST_BYTES = 64 * 1024;
 const REQUEST_TIMEOUT_MS = 10_000;
 const RETRY_MS = 60_000;
@@ -48,6 +48,12 @@ export function createExtrasRuntime(options: RuntimeOptions) {
   const subscribers = new Set<() => void>();
 
   const equalManifest = (a: Manifest, b: Manifest) => JSON.stringify(a) === JSON.stringify(b);
+  // Plugin code is typed from the bundled kinds; an update cannot turn a component into an object.
+  const checkKinds = (next: Manifest) => {
+    for (const [name, { kind }] of Object.entries(next.extras)) {
+      if (bundled.extras[name] && bundled.extras[name].kind !== kind) throw new Error(`Extras update changes the kind of ${name}`);
+    }
+  };
 
   function cachedManifest(): Manifest | null {
     try {
@@ -81,6 +87,7 @@ export function createExtrasRuntime(options: RuntimeOptions) {
     const cached = cachedManifest();
     if (cached && cached.revision > bundled.revision) {
       try {
+        checkKinds(cached);
         resolutions = computeResolutions(cached, baseline);
         manifest = cached;
         return;
@@ -150,6 +157,7 @@ export function createExtrasRuntime(options: RuntimeOptions) {
         throw new Error("Extras manifest changed without a revision bump");
       }
       if (candidate.revision > manifest.revision) {
+        checkKinds(candidate);
         const nextResolutions = computeResolutions(candidate, resolutions, true);
         manifest = candidate;
         resolutions = nextResolutions;

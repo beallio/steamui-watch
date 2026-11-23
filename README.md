@@ -23,15 +23,15 @@ When Valve updates the Steam Deck interface, it often scrambles the internal nam
 **If you build themes or Decky plugins:**
 
 - Browse the [Steam Deck Interface Guide](https://beallio.github.io/steamui-watch/guide/) to search controls, screen areas, and theme names, or use its built-in paste translator to update a theme for the beta. (The raw [guide data](https://beallio.github.io/steamui-watch/guide/data.json) is also public.)
-- Read [Decky extras](packages/decky-extras/README.md) to add the 33 extra Steam controls to a plugin.
+- Read [Decky extras](packages/decky-extras/README.md) to add 34 extra Steam controls, and other Steam objects, to a plugin.
 - Download the live theme translation lists directly if you need them:
   - [Stable theme list](https://beallio.github.io/steamui-watch/stable.json) (normal Steam Deck release)
   - [Beta theme list](https://beallio.github.io/steamui-watch/beta.json) (Steam Deck beta)
-  - [Decky extras search list](https://beallio.github.io/steamui-watch/decky-extras.json)
+  - [Decky extras search list](https://beallio.github.io/steamui-watch/decky-extras-v2.json) (the [older format](https://beallio.github.io/steamui-watch/decky-extras.json) stays for plugins built with versions before 0.4.0)
 
 ## What happens automatically
 
-- **Every 6 hours — publish theme lists and the public guide:** Checks Valve's current Steam Deck Stable and Beta releases, updates both theme translation lists (keeping full history for older themes), verifies all 33 Decky extras work on both releases, and rebuilds the public online guide. Each piece is isolated: if the guide or extras check fails, the last working version stays online and fresh theme lists still publish.
+- **Every 6 hours — publish theme lists and the public guide:** Checks Valve's current Steam Deck Stable and Beta releases, updates both theme translation lists (keeping full history for older themes), verifies all Decky extras work on both releases, and rebuilds the public online guide. Each piece is isolated: if the guide or extras check fails, the last working version stays online and fresh theme lists still publish.
 - **When a new Steam version appears:** Opens a **"New CSS mappings"** issue summarizing whether screen names actually changed (with links to the full list of changes) or if only Steam's version number changed.
 - **Every 6 hours — freshness check:** Verifies that theme lists have published within the past 24 hours, opens a **"CSS mappings are overdue"** issue if not, and closes it automatically once publishing recovers.
 - **Once a day — sync upstream theme history:** Checks the DeckThemes team's mapping repository and merges safe data updates automatically, or opens a **"DeckThemes mappings changed"** issue when human review is needed.

@@ -3,9 +3,10 @@ import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import extrasData from "../packages/decky-extras/extras.json";
+import { componentsOf, parseManifest } from "../packages/decky-extras/match";
 import { generateReports } from "./props_report";
 
-const names = Object.keys(extrasData.components);
+const names = Object.keys(componentsOf(parseManifest(extrasData)));
 let root: string, current: string, baseline: string, out: string;
 
 beforeEach(async () => {

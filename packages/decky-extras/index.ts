@@ -1,14 +1,16 @@
 import * as React from "react";
 import * as DeckyUI from "@decky/ui";
 import bundled from "./extras.json";
+import { componentsOf, type Manifest } from "./match";
 import { createExtrasRuntime } from "./runtime";
 
-type ExtraName = keyof typeof bundled.components;
+type ExtraName = string;
 type ExtraProps = Record<string, unknown>;
 type WrapperProps = ExtraProps & React.RefAttributes<unknown>;
 type RawComponent = React.ComponentType<ExtraProps> | React.ExoticComponent<ExtraProps>;
 
-const names = Object.keys(bundled.components) as ExtraName[];
+const names = Object.keys(bundled.extras);
+const componentNames = Object.keys(componentsOf(bundled as Manifest));
 const createScopeMapping = (DeckyUI as typeof DeckyUI & {
   createScopeMapping?: (filter: (module: unknown) => boolean) => Map<string, unknown>;
 }).createScopeMapping;
@@ -41,7 +43,7 @@ function wrap(name: ExtraName): React.ForwardRefExoticComponent<WrapperProps> {
 }
 
 export const extras: Readonly<Record<ExtraName, React.ForwardRefExoticComponent<WrapperProps>>> = Object.freeze(
-  Object.fromEntries(names.map((name) => [name, wrap(name)])) as Record<ExtraName, React.ForwardRefExoticComponent<WrapperProps>>,
+  Object.fromEntries(componentNames.map((name) => [name, wrap(name)])),
 );
 
 export function findExtra(name: ExtraName): RawComponent | null {
@@ -49,6 +51,14 @@ export function findExtra(name: ExtraName): RawComponent | null {
   const component = runtime.get(name) as RawComponent | null;
   if (!component) warnMissing(name);
   return component;
+}
+
+/** A Steam function or object (kind "function" or "object"), or `null` when missing or not unique. */
+export function findSteamValue(name: string): unknown {
+  runtime.start();
+  const value = runtime.get(name);
+  if (value == null) warnMissing(name);
+  return value;
 }
 
 export function refreshExtras(): Promise<boolean> {

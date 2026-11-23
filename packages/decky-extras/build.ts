@@ -2,22 +2,26 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { parseManifest } from "./match";
+import { componentsOf, parseManifest } from "./match";
 
 const { values } = parseArgs({ options: { outdir: { type: "string" } }, strict: true, allowPositionals: false });
 const sourceDir = import.meta.dir;
 const outdir = resolve(values.outdir ?? resolve(sourceDir, "dist"));
 const manifest = parseManifest(JSON.parse(await readFile(resolve(sourceDir, "extras.json"), "utf8")));
-const names = Object.keys(manifest.components);
+const names = Object.keys(componentsOf(manifest));
+const valueNames = Object.keys(manifest.extras).filter((name) => !names.includes(name));
+const union = (list: string[]) => list.map((name) => JSON.stringify(name)).join(" | ") || "never";
 const declaration = `import type * as React from "react";
 
-export type ExtraName = ${names.map((name) => JSON.stringify(name)).join(" | ")};
+export type ExtraName = ${union(names)};
+export type SteamValueName = ${union(valueNames)};
 export type ExtraProps = Record<string, unknown>;
 export type ExtraComponent = React.ComponentType<ExtraProps> | React.ExoticComponent<ExtraProps>;
 export type ExtraWrapper = React.ForwardRefExoticComponent<ExtraProps & React.RefAttributes<unknown>>;
 export type Extras = { readonly [Name in ExtraName]: ExtraWrapper };
 export declare const extras: Extras;
 export declare function findExtra(name: ExtraName): ExtraComponent | null;
+export declare function findSteamValue(name: SteamValueName): unknown;
 export declare function refreshExtras(): Promise<boolean>;
 export declare function stopExtrasUpdates(): void;
 `;

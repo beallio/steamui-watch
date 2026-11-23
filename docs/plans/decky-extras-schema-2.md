@@ -1,6 +1,6 @@
 # Design: decky-extras manifest schema 2
 
-Status: draft for review. Nothing in this document is implemented.
+Status: implemented for issue #44 (package 0.4.0, data revision 5). See "Decisions" at the end for where the implementation differs from the first draft.
 
 ## Problem
 
@@ -54,11 +54,11 @@ Changes from schema 1:
 | Item | Schema 1 | Schema 2 |
 |---|---|---|
 | Entry map | `components` | `extras` |
-| Entry type | always a component | `kind`: `component`, `function`, `object` or `class` |
+| Entry type | always a component | `kind`: `component`, `function` or `object` |
 | Name rule | identifier that starts with an upper-case letter | the same rule |
-| Source atoms (`text`, `member`, `binding`) | yes | yes, for `component`, `function` and `class` |
-| `key` atom | no | yes, for `object` and `class`; identifier rule as for `member` |
-| `not` atom | no | `{ "not": <source atom> }`; the clause matches when the atom is absent |
+| Source atoms (`text`, `member`, `binding`) | yes | yes, for `component` and `function` |
+| `key` atom | no | yes, for `function` and `object`; identifier rule as for `member` |
+| `not` atom | no | `{ "not": <atom> }`; matches when the atom is absent; every entry needs at least one clause without `not` |
 | Limits | 256 entries, 16 clauses of 16 atoms, 64 KiB | the same |
 
 ### What each kind matches
@@ -68,13 +68,12 @@ The matcher reads each value from the module map that `@decky/ui` returns (`crea
 | Kind | Candidate | Source text for atoms | Keys for `key` atoms |
 |---|---|---|---|
 | `component` | value where `render`, `type` or the value itself is a function (as now) | that function | — |
-| `function` | a function that is not a class (its source does not start with `class`) | the function | — |
-| `class` | a function whose source starts with `class` | the class source | own and prototype names, excluding `Object.prototype` |
+| `function` | any function, classes included | the function | names on its `prototype` chain (class methods), excluding `Object.prototype` |
 | `object` | a non-function object | — | own and prototype-chain names, excluding `Object.prototype` |
 
 `key` uses `Object.getOwnPropertyNames` on each object in the prototype chain. It never reads a property value, so Steam getters do not run during matching.
 
-`not` exists for entries such as `CalloutMessage`, which positive atoms cannot match uniquely on beta. It is valid only together with at least one positive atom in the same entry.
+`not` only narrows a set that positive clauses already picked. It cannot help an entry with no matching literal text, such as beta `CalloutMessage` (see "Decisions").
 
 ## Delivery and compatibility
 
@@ -99,23 +98,23 @@ flowchart LR
 ```ts
 extras.RadioButton                        // as now: wrapper component, kind "component" only
 findExtra("RadioButton")                  // as now
-findSteamValue("RouterHistoryStore")      // object, function or class; null if missing or not unique
-useSteamValue("RouterHistoryStore")       // the same, and re-renders after a feed update
+findSteamValue("RouterHistoryStore")      // function or object; null if missing or not unique
 ```
 
 - `findSteamValue` returns `unknown`. Plugins cast it to their own type, as they do with `findModuleExport`. A typed table is a later option.
 - The function warns once per missing name, as `findExtra` does now.
+- The generated `index.d.ts` types its argument as `SteamValueName`, the union of the bundled non-component names.
 
 ## Watch support in this repo
 
-- `tools/runtime_probe.ts` already runs `matchExtras` in Steam's page for each branch. It reports every kind the same way: 1 match is good, 0 or 2+ fails. `VITE_OPTIONAL_EXTRAS` goes away when `not` makes `CalloutMessage` unique.
-- `props_report.ts` stays on components. For `object` and `class`, a later change can record key names (names only, no values) and report changes in the same way.
-- `publish-mappings.yml` validates both files with the new `parseManifest` (v2) and the old one, kept as `parseManifestV1` for the copy. It publishes both files, or keeps the last good pair. It never publishes one new file together with one old file.
-- `tools/dev_guide.ts` lists the new kinds in the developer guide (names and descriptions only).
+- `tools/runtime_probe.ts` already runs `matchExtras` in Steam's page for each branch. It reports every kind the same way: 1 match is good, 0 or 2+ fails. `VITE_OPTIONAL_EXTRAS` stays for `CalloutMessage` (see "Decisions").
+- `props_report.ts` stays on components. For `object` and `function`, a later change can record key names (names only, no values) and report changes in the same way.
+- `publish-mappings.yml` validates both files with the new `parseManifest` (v2) and the old one, kept as `parseManifestV1` for the copy; `packages/decky-extras/feed.ts` writes both. It publishes both files, or keeps the last good pair. If no v2 file was published yet, the fallback leaves it out with a warning.
+- `tools/dev_guide.ts` already records every unique extra; `dev_guide_docs.ts` now describes all kinds.
 
 ## First entries
 
-Start with values that the runtime probe already finds on both branches. The probe's loader checks take the first match, so uniqueness is not yet known:
+All three match exactly one object on stable 1794536281 and beta 1795048523 (runtime probe, 2026-11-24):
 
 | Name | Kind | Finder now in the probe |
 |---|---|---|
@@ -123,18 +122,19 @@ Start with values that the runtime probe already finds on both branches. The pro
 | `ValveToastRenderer` | function | text `controller:"notification",method:` (both quote forms) |
 | `VRDashboardBarSmallButton` | component | text `VRDashboardBarSmallButtonActive` |
 
-Before an entry is added, `matchExtras` in the probe must show exactly one match on stable and on beta.
+Before another entry is added, `matchExtras` in the probe must show exactly one match on stable and on beta.
 
 ## Tests
 
-- `parseManifest`: accepts the example above; rejects an unknown kind, `key` on `component`, `not` without a positive atom, and a property path in `key`.
-- `matchExtras`: finds an object by inherited keys; does not run a getter (the getter throws in the test); does not take a class for a `function`; `not` removes the second match.
-- Runtime: rejects a feed update that changes `kind`; keeps the v1 and v2 caches apart.
-- Projection: the schema 1 copy of the current data is equal to the published `decky-extras.json` at revision 4, apart from `revision`. A component with a `not` atom keeps its earlier v1 finder; a new one with a `not` atom is left out; each copy passes the 0.3.0 `parseManifest`.
+- `parseManifest`: rejects an unknown kind (including `class`), `key` on `component`, source atoms on `object`, a property path or `__proto__` in `key`, `not`-only entries and nested `not`.
+- `matchExtras`: finds an object by inherited keys; does not run a getter (the getter throws in the test); a `function` entry does not match an object with the same text; `key` on a `function` finds a class by its method; `not` removes the second match.
+- Runtime: rejects a cached or downloaded update that changes `kind`.
+- Projection: the copy of the current data keeps every component finder unchanged; a component with a `not` atom keeps its earlier v1 finder; a new one is left out; a published copy with a newer revision is an error. A one-off check showed the copy equals the published revision 4 file apart from `revision` and the new `VRDashboardBarSmallButton`.
 
-## Open questions
+## Decisions
 
-1. Is `class` needed as a separate kind, or is `function` with a `text: "class "` atom enough?
-2. Should `useSteamValue` exist, or is `findSteamValue` plus a `subscribe` call enough?
-3. Raise the 64 KiB limit now, or when the data gets close to it? Revision 4 is 8.3 KB.
-4. Webpack clients find only exports. Should an entry be able to say "beta only", so the probe does not fail on stable for a value that is private there?
+1. **No `class` kind.** `function` covers classes, and `key` on a function reads its prototype chain, so a class is found by its methods.
+2. **No `useSteamValue`.** `findSteamValue` is enough for now; add a hook when a plugin needs re-rendering after a feed update.
+3. **64 KiB limit unchanged.** Revision 5 is 9.4 KB.
+4. **No "beta only" flag.** All first entries match on both branches. Add one when a value is private on stable.
+5. **`CalloutMessage` stays optional on Vite.** On beta its body is `({children,className})=>div(cls(A,className),[div(B),div(cls(B,C)),children])` with hashed class constants: no literal text tells it apart, and `not` cannot add matches.

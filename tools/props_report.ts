@@ -3,6 +3,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import extrasData from "../packages/decky-extras/extras.json";
+import { componentsOf, parseManifest } from "../packages/decky-extras/match";
 
 type Surface = { at: string[]; props: string[]; notes: string[] };
 type Snapshot = {
@@ -14,8 +15,8 @@ type Snapshot = {
 };
 type Change = { name: string; added: string[]; removed: string[]; notes: string[] };
 
-const canonical = Object.entries(extrasData.components) as [string, { title: string; description: string }][];
-const canonicalNames = Object.keys(extrasData.components);
+const canonical = Object.entries(componentsOf(parseManifest(extrasData)));
+const canonicalNames = canonical.map(([name]) => name);
 const snapshotName = /^(stable|beta|local)-(0|[1-9]\d*)\.json$/;
 const generatedName = /^(stable|beta|local)-(0|[1-9]\d*)(\.reference)?\.md$/;
 

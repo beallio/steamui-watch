@@ -1,15 +1,15 @@
 import { expect, test } from "bun:test";
 import { createExtrasRuntime } from "./runtime";
 
-const CACHE_KEY = "beallio:decky-extras:v1";
+const CACHE_KEY = "beallio:decky-extras:v2";
 const componentNames = ["RadioButton"];
 
-function definitions(revision: number, text: string) {
+function definitions(revision: number, text: string, kind = "component") {
   return {
-    schema: 1,
+    schema: 2,
     revision,
-    components: {
-      RadioButton: { title: "Radio button", description: "", find: [[{ text }]] },
+    extras: {
+      RadioButton: { kind, title: "Radio button", description: "", find: [[{ text }]] },
     },
   };
 }
@@ -130,6 +130,29 @@ test("valid newer data replaces the cache", async () => {
   expect(await runtime.refresh()).toBe(true);
   expect(runtime.get("RadioButton")).toBe(available);
   expect(JSON.parse(storage.values.get(CACHE_KEY)!)).toEqual(updated);
+  runtime.dispose();
+});
+
+test("downloads and caches that change a bundled kind are rejected", async () => {
+  // The bundled finder sees only the component; the changed finder would see only the function.
+  const component = { render() { return "working"; } };
+  const fn = () => "working";
+  const timers = fakeTimers();
+  const storage = memoryStorage(JSON.stringify(definitions(2, "working", "function")));
+  const runtime = createExtrasRuntime({
+    bundled: definitions(1, "return"),
+    names: componentNames,
+    modules: () => new Map([["ui", { component, fn }]]),
+    fetch: async () => response(definitions(3, "working", "function")),
+    storage: () => storage,
+    now: () => 100_000,
+    setTimer: timers.set,
+    clearTimer: timers.clear,
+  });
+  expect(runtime.get("RadioButton")).toBe(component);
+  expect(await runtime.refresh()).toBe(false);
+  expect(runtime.get("RadioButton")).toBe(component);
+  expect(JSON.parse(storage.values.get(CACHE_KEY)!).revision).toBe(2);
   runtime.dispose();
 });
 

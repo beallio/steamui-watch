@@ -102,15 +102,26 @@ jobs:
             --decky-ui-webpack "$TMPDIR/decky-ui/webpack/package" --decky-ui-esm "$TMPDIR/decky-ui/esm/package"
           bun packages/decky-extras/build.ts --outdir "$TMPDIR/extras-package"
           npm pack "$TMPDIR/extras-package" --pack-destination "$TMPDIR" --silent
-          cp packages/decky-extras/extras.json "$TMPDIR/site/decky-extras.json"
+          # decky-extras.json is the schema 1 copy for 0.2.x/0.3.x; it keeps published finders that need schema 2 atoms.
+          curl --fail --location --silent --show-error --max-time 30 \
+            https://beallio.github.io/steamui-watch/decky-extras.json --output "$TMPDIR/published-extras.json"
+          bun packages/decky-extras/feed.ts --previous "$TMPDIR/published-extras.json" --outdir "$TMPDIR/site"
       - name: Retain published extras after validation failure
         if: steps.extras.outcome == 'failure'
         run: |
-          previous="$RUNNER_TEMP/steamui-watch/previous-extras.json"
+          dir="$RUNNER_TEMP/steamui-watch"
+          rm -f "$dir/site/decky-extras.json" "$dir/site/decky-extras-v2.json"
           curl --fail --location --silent --show-error --max-time 30 \
-            https://beallio.github.io/steamui-watch/decky-extras.json --output "$previous"
-          bun -e 'import { parseManifest } from "./packages/decky-extras/match"; parseManifest(await Bun.file(Bun.argv.at(-1)).json());' "$previous"
-          cp "$previous" "$RUNNER_TEMP/steamui-watch/site/decky-extras.json"
+            https://beallio.github.io/steamui-watch/decky-extras.json --output "$dir/previous-extras.json"
+          bun -e 'import { parseManifestV1 } from "./packages/decky-extras/match"; parseManifestV1(await Bun.file(Bun.argv.at(-1)).json());' "$dir/previous-extras.json"
+          cp "$dir/previous-extras.json" "$dir/site/decky-extras.json"
+          if curl --fail --location --silent --show-error --max-time 30 \
+              https://beallio.github.io/steamui-watch/decky-extras-v2.json --output "$dir/previous-extras-v2.json" \
+            && bun -e 'import { parseManifest } from "./packages/decky-extras/match"; parseManifest(await Bun.file(Bun.argv.at(-1)).json());' "$dir/previous-extras-v2.json"; then
+            cp "$dir/previous-extras-v2.json" "$dir/site/decky-extras-v2.json"
+          else
+            echo "::warning::No valid published decky-extras-v2.json to keep; 0.4.0+ plugins use their bundled definitions."
+          fi
           echo "::warning::Extras validation failed. Publishing fresh CSS mappings with the previous extras definitions; skipping the extras release."
       - name: Generate and stage developer guide
         id: guide

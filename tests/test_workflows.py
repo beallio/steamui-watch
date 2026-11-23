@@ -202,14 +202,19 @@ class HistoryPersistenceTest(WorkflowTest):
 
 @unittest.skipUnless(shutil.which("bun"), "needs Bun for extras manifest validation")
 class ExtrasPublicationTest(WorkflowTest):
-    def test_failed_extras_check_keeps_published_extras_and_fresh_css(self):
+    def run_fallback(self, published_v2):
         previous = {"schema": 1, "revision": 2, "components": {
             "RadioButton": {"title": "Radio", "description": "", "find": [[{"text": "previous"}]]}}}
         old = self.tmp / "published.json"
         old.write_text(json.dumps(previous))
+        old_v2 = self.tmp / "published-v2.json"
+        if published_v2 is not None:
+            old_v2.write_text(json.dumps(published_v2))
         curl = self.tmp / "bin" / "curl"
         curl.write_text("#!/usr/bin/env python3\nimport os, shutil, sys\n"
-                        'shutil.copyfile(os.environ["PUBLISHED_EXTRAS"], sys.argv[sys.argv.index("--output") + 1])\n')
+                        'source = os.environ["PUBLISHED_EXTRAS_V2" if any(a.endswith("-v2.json") for a in sys.argv) else "PUBLISHED_EXTRAS"]\n'
+                        "if not os.path.exists(source): sys.exit(22)\n"
+                        'shutil.copyfile(source, sys.argv[sys.argv.index("--output") + 1])\n')
         curl.chmod(0o755)
 
         def prepare(runner):
@@ -217,16 +222,29 @@ class ExtrasPublicationTest(WorkflowTest):
             site.mkdir(parents=True)
             (site / "stable.json").write_text('{"stable":"new"}')
             (site / "beta.json").write_text('{"beta":"new"}')
-            # An unvalidated candidate must not be served after the probe fails.
+            # Unvalidated candidates must not be served after the probe fails.
             (site / "decky-extras.json").write_text('{"revision":999,"unvalidated":true}')
+            (site / "decky-extras-v2.json").write_text('{"revision":999,"unvalidated":true}')
 
         result, runner = self.run_step("publish-mappings.yml", "Retain published extras after validation failure",
-                                      cwd=WORKFLOWS.parent.parent, prepare=prepare, PUBLISHED_EXTRAS=str(old))
+                                      cwd=WORKFLOWS.parent.parent, prepare=prepare,
+                                      PUBLISHED_EXTRAS=str(old), PUBLISHED_EXTRAS_V2=str(old_v2))
         self.assertEqual(result.returncode, 0, result.stderr)
         site = runner / "steamui-watch" / "site"
         self.assertEqual(json.loads((site / "decky-extras.json").read_text()), previous)
         self.assertEqual(json.loads((site / "stable.json").read_text()), {"stable": "new"})
         self.assertEqual(json.loads((site / "beta.json").read_text()), {"beta": "new"})
+        return site
+
+    def test_failed_extras_check_keeps_both_published_feeds_and_fresh_css(self):
+        previous_v2 = {"schema": 2, "revision": 2, "extras": {
+            "RadioButton": {"kind": "component", "title": "Radio", "description": "", "find": [[{"text": "previous"}]]}}}
+        site = self.run_fallback(previous_v2)
+        self.assertEqual(json.loads((site / "decky-extras-v2.json").read_text()), previous_v2)
+
+    def test_failed_extras_check_without_a_published_v2_feed_serves_no_candidate(self):
+        site = self.run_fallback(None)
+        self.assertFalse((site / "decky-extras-v2.json").exists())
 
 
 @unittest.skipUnless(shutil.which("bun"), "needs Bun for guide metadata validation")
@@ -732,7 +750,7 @@ class FinderSnapshotTest(WorkflowTest):
             "schema": 1, "branch": "stable", "version": str(version), "revision": 1,
             "components": {
                 name: {"at": ["50777:abc"], "props": radio_props if name == "RadioButton" else ["children"], "notes": []}
-                for name in manifest["components"]
+                for name, extra in manifest["extras"].items() if extra["kind"] == "component"
             },
         })
 
