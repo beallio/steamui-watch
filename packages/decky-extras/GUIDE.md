@@ -136,14 +136,16 @@ A Steam update can remove or change a component. Use `findExtra` when you want y
 import { findExtra } from "@beallio/decky-extras";
 import { ToggleField } from "@decky/ui";
 
-const ToggleRow = findExtra("ToggleRow");
-
 function EnabledToggle(props: { value: boolean; onChange: (value: boolean) => void }) {
+  // Look it up on each render: a later definitions update can then supply a control that was missing.
+  const ToggleRow = findExtra("ToggleRow");
   return ToggleRow
     ? <ToggleRow label="Enabled" value={props.value} onChange={props.onChange} />
     : <ToggleField label="Enabled" checked={props.value} onChange={props.onChange} />;
 }
 ```
+
+Call `findExtra` inside the component, not once at module level: a value stored when the plugin loads never changes. `findExtra` is a quick lookup, so calling it on each render costs little.
 
 `findSteamValue` returns `null` in the same cases. Check the result and its fields before you use them.
 
