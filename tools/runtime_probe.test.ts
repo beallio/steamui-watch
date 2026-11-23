@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { cdp, fingerprint, isExtraPassing, isViteHtml } from "./runtime_probe";
 
@@ -77,7 +77,10 @@ test("ES-module client detection matches decky-loader's script[type=module][src*
 });
 
 test("a missing @decky/ui package fails before any bundle is checked; an empty path skips its format", async () => {
-  const tmp = await mkdtemp(join(process.env.TMPDIR || "/var/tmp/omp-1000", "probe-test-"));
+  // Project convention (AGENTS.md): $TMPDIR, else /var/tmp/omp-1000, created on first use.
+  const base = process.env.TMPDIR || "/var/tmp/omp-1000";
+  await mkdir(base, { recursive: true, mode: 0o700 });
+  const tmp = await mkdtemp(join(base, "probe-test-"));
   try {
     await Bun.write(join(tmp, "ui/package.json"), "{}");
     // A bundle without Webpack or module scripts: the probe would boot it as a Webpack client.
