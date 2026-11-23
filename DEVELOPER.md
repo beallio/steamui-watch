@@ -109,7 +109,7 @@ The report includes the baseline name, old and candidate export locations, match
 
 For toast dismissal, the browser check verifies that `NotificationStore.RemoveGroupFromTray` and `NotificationStore.RemoveFromToastsWhere` are callable. The source-text check looks for both method names.
 
-The browser uses a `SteamClient` stand-in, not a real Steam client. React-tree finders still need Gaming Mode. The history check verifies the store's shape with the loader's `findModuleExport` search, not that Gaming Mode has populated `m_history`. Prop recording (`--props-dir`) needs Webpack module factories and runs on Webpack clients only. Confirm failures on a Steam Deck or SteamOS VM.
+The browser uses a `SteamClient` stand-in, not a real Steam client. React-tree finders still need Gaming Mode. The file picker's `m_history` store search (`patches/library.ts`) is not copied: the loader has that patch commented out. Prop recording (`--props-dir`) needs Webpack module factories and runs on Webpack clients only. Confirm failures on a Steam Deck or SteamOS VM.
 
 ## Discover and watch extra-component props
 

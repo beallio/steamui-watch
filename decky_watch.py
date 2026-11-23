@@ -98,10 +98,9 @@ FINDERS = (
     code(LOADER, "toaster: Valve toast renderer", re.compile(r'controller:[`"]notification[`"],method:')),
     code(LOADER, "toaster: NotificationStore removal methods",
          name("RemoveGroupFromTray"), name("RemoveFromToastsWhere")),
-    # library.ts finds the routing store by a set m_history. Steam sets it only in
-    # UpdateRoutingInfo, which a router component calls from a useEffect.
-    code(LOADER, "filepicker: history", re.compile(r"UpdateRoutingInfo\([\w$]+,[\w$]+\)\{this\.m_history=[\w$]+"),
-         ".UpdateRoutingInfo("),
+    # Not copied on purpose: components/modals/filepicker/patches/library.ts (the m_history store search).
+    # patches/index.ts has its import and call commented out, so the loader never runs it. Add it back
+    # if the fork enables that patch; the copies job would likely miss the uncommented call.
     classes(LOADER, "Markdown: EventDetailsBody", "EventDetailsBody"),
     classes(LOADER, "DropdownMultiselect: classes", "DropDownControlButton", "duration-app-launch"),
     classes(LOADER, "stable boot: toastClasses", "ShortTemplate", "StandardTemplateContainer", webpack_only=True),

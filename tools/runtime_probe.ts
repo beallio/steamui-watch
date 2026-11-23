@@ -226,8 +226,7 @@ const PROBE = (files: string[], isVite: boolean, extrasOnly = false) => `(async 
   check("toaster: Valve toast renderer", () => W.findVar((e) => typeof e == "function" && /controller:[\`"]notification[\`"],method:/.test(e?.toString?.() ?? "")));
   check("toaster: NotificationStore removal methods", () => typeof window.NotificationStore?.RemoveGroupFromTray === "function"
     && typeof window.NotificationStore?.RemoveFromToastsWhere === "function");
-  // library.ts needs a set m_history, which only the Gaming Mode router sets; check the store's shape.
-  check("filepicker: history store", () => W.findModuleExport((e) => typeof e == "object" && "m_history" in e && "m_navigator" in e && "m_locationPathname" in e));
+  // Not copied on purpose: filepicker/patches/library.ts's m_history store search is commented out of patches/index.ts.
   check("vr-dashboard-bar: bar button", () => W.findVar((e) => e?.render?.toString()?.includes("VRDashboardBarSmallButtonActive")));
   check("vr-dashboard-bar: bar component", () => W.findVar((e) => /vrLocation==[\`"]dashboard-bar[\`"]/.test(e?.type?.toString?.() ?? "")));
   // Vite/Rolldown tree-shakes CSS class modules out of JS; on ES modules @decky/ui 5 supplies the loader's class lists.
