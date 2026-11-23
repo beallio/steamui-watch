@@ -133,6 +133,9 @@ export function createExtrasRuntime(options: RuntimeOptions) {
     requestTimer = setTimer(() => controller.abort(), REQUEST_TIMEOUT_MS);
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     try {
+      // "no-cache" makes the browser revalidate its copy with the server's ETag; an unchanged feed costs a 304, not a download.
+      // Do not send If-None-Match ourselves: from Steam's origin it needs a CORS preflight, which GitHub Pages rejects (405),
+      // and Pages does not expose the ETag header to scripts.
       const response = await fetcher(EXTRAS_URL, { cache: "no-cache", signal: controller.signal });
       if (!response.ok) throw new Error(`Extras download returned HTTP ${response.status}`);
       const contentLength = response.headers.get("content-length");
