@@ -82,7 +82,7 @@ function SteamIconExample() {
 }
 ```
 
-`IconBrowser` searches the available names and shows a snippet when you select a cell. It does not copy the snippet. Put it on a plugin page or a debug panel to find an icon name; directional icons appear once per direction. Without `size`, `SteamIcon` is `1em` square, so it follows the text size.
+`IconBrowser` searches the available names. Select a cell (A button or click) to copy its snippet, for example `<SteamIcon name="Clock" />`, to the clipboard; the snippet also stays visible under the grid. Put it on a plugin page or a debug panel to find an icon name; directional icons appear once per direction. Without `size`, `SteamIcon` is `1em` square, so it follows the text size.
 
 ### Settings panel with native controls
 
@@ -194,6 +194,7 @@ On the same VM, a second test plugin with the package 0.5.0 build ran the icon A
 
 - `SteamIcon` drew `Clock` at 24 px, `Settings` at 16 px (the `1em` default), and `Arrow` (`direction="right"`) at 24 px. A missing name and `FrameControllerPairing` without `controllerProps` drew their fallbacks.
 - `IconBrowser` drew all 493 names (508 SVGs). With the controller D-pad, focus moved from the search field into the grid cells, and the A button selected a cell: it showed `<SteamIcon name="Accelerometer" />` and called `onSelect` once.
+- With the A button, the snippet was copied: the browser showed "Copied", and pasting with Ctrl+V into a text field gave `<SteamIcon name="Accelerometer" />`. The Clipboard API alone failed there ("Document is not focused"), so the package copies the way Steam's own copy commands do.
 - Typing `carat` in the search field left 8 cells: `Carat` and `DoubleCarat` in four directions.
 - The console had no errors from the plugin; the only warning was the expected one for the missing name.
 - A `SteamIcon` worked as the plugin's icon in the Decky plugin list.

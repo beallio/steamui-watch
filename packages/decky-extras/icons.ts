@@ -125,9 +125,49 @@ function snippetFor(cell: IconCell): string {
 
 export type IconBrowserProps = { onSelect?: (name: string, snippet: string) => void };
 
+type CopyWindow = {
+  top?: CopyWindow | null;
+  document?: Document;
+  navigator?: Navigator;
+  SteamClient?: { Browser?: { NotifyUserActivation?: () => void } };
+};
+
+/**
+ * Copies text the way Steam's own CopyTextToClipboard does. Gaming Mode windows have no DOM focus during gamepad
+ * navigation, so the Clipboard API refuses; execCommand("copy") works after SteamClient.Browser.NotifyUserActivation.
+ * Outside Steam it uses the Clipboard API.
+ */
+export async function copySnippet(text: string, win: CopyWindow = globalThis as CopyWindow): Promise<boolean> {
+  const top = win.top ?? win;
+  const notify = top.SteamClient?.Browser?.NotifyUserActivation;
+  const doc = top.document;
+  if (typeof notify === "function" && doc?.body) {
+    const area = doc.createElement("textarea");
+    area.textContent = text;
+    area.style.position = "fixed";
+    doc.body.appendChild(area);
+    area.select();
+    try {
+      notify.call(top.SteamClient!.Browser);
+      return doc.execCommand("copy");
+    } catch {
+      return false;
+    } finally {
+      area.remove();
+    }
+  }
+  try {
+    await top.navigator!.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function IconBrowser({ onSelect }: IconBrowserProps): React.ReactElement {
   const [search, setSearch] = React.useState("");
   const [selectedSnippet, setSelectedSnippet] = React.useState("");
+  const [copyStatus, setCopyStatus] = React.useState("");
   const registry = iconRegistry();
   const cells = filterIconCells(Object.keys(registry ?? {}).sort(), search);
   const TextField = DeckyUI.TextField;
@@ -154,6 +194,8 @@ export function IconBrowser({ onSelect }: IconBrowserProps): React.ReactElement 
           : fallback;
         const activate = () => {
           setSelectedSnippet(snippet);
+          setCopyStatus("");
+          void copySnippet(snippet).then((copied) => setCopyStatus(copied ? "Copied" : "Not copied: select the text"));
           onSelect?.(cell.name, snippet);
         };
         return React.createElement(
@@ -173,6 +215,7 @@ export function IconBrowser({ onSelect }: IconBrowserProps): React.ReactElement 
         );
       }),
     ),
-    selectedSnippet && React.createElement("code", { style: { display: "block", marginTop: 8 } }, selectedSnippet),
+    selectedSnippet && React.createElement("code", { style: { display: "block", marginTop: 8, userSelect: "text" } }, selectedSnippet),
+    copyStatus && React.createElement("div", { "data-copy-status": "" }, copyStatus),
   );
 }

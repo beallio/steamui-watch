@@ -80,7 +80,7 @@ import { SteamIcon } from "@beallio/decky-extras";
 
 Some names may be missing on a Steam build. A missing name warns once and renders `fallback`, or nothing when no fallback is set. Directional icons default to `direction="up"`. `FrameControllerPairing` needs `controllerProps.role`; it renders the fallback when this prop is missing.
 
-`IconBrowser` filters names without regard to case. Its cells support gamepad focus and click. It calls optional `onSelect(name, snippet)` when a user selects a cell, then shows the snippet as text. It does not use the clipboard.
+`IconBrowser` filters names without regard to case. Its cells support gamepad focus and click. When a user selects a cell, it shows the snippet as text, copies it to the clipboard, shows "Copied" or "Not copied: select the text", and calls optional `onSelect(name, snippet)`. In Steam it copies the way Steam's own copy commands do (`SteamClient.Browser.NotifyUserActivation` and `execCommand("copy")`), because the Clipboard API refuses to write while gamepad navigation has no DOM focus.
 
 Icon names may be missing on a Steam build, and Stable glyphs may differ from Beta glyphs. The package does not contain Valve SVG paths, CSS, or images; icons render from the user's Steam client.
 

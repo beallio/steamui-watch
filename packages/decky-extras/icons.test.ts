@@ -26,6 +26,7 @@ mock.module("./index", () => ({ findSteamValue: () => null }));
 // Load after the module mocks because this package's peers are supplied by Steam.
 const {
   canRenderIcon,
+  copySnippet,
   filterIconCells,
   findSteamIcon,
   IconErrorBoundary,
@@ -34,6 +35,27 @@ const {
   selectIconRegistry,
   steamIconNames,
 } = await import("./icons");
+
+test("in Steam, snippets copy like Steam's CopyTextToClipboard; elsewhere through the Clipboard API", async () => {
+  const steps: string[] = [];
+  const area = { textContent: "", style: {} as Record<string, string>, select: () => steps.push("select"), remove: () => steps.push("remove") };
+  const document = {
+    body: { appendChild: () => steps.push("append") },
+    createElement: () => area,
+    execCommand: (command: string) => { steps.push(`${command}:${area.textContent}`); return true; },
+  };
+  const steam = { document, SteamClient: { Browser: { NotifyUserActivation: () => { steps.push("activation"); } } } } as any;
+  expect(await copySnippet("<SteamIcon name=\"Clock\" />", { top: steam } as any)).toBe(true);
+  // Activation must come before the copy command, and the helper element is always removed.
+  expect(steps).toEqual(["append", "select", "activation", "copy:<SteamIcon name=\"Clock\" />", "remove"]);
+
+  const written: string[] = [];
+  const browser = (writeText: (text: string) => Promise<void>) => ({ navigator: { clipboard: { writeText } } }) as any;
+  expect(await copySnippet("x", browser(async (text) => { written.push(text); }))).toBe(true);
+  expect(written).toEqual(["x"]);
+  expect(await copySnippet("x", browser(async () => { throw new Error("Document is not focused"); }))).toBe(false);
+  expect(await copySnippet("x", { navigator: {} } as any)).toBe(false);
+});
 
 test("Steam icon registry selection and name lookup use the live value first", () => {
   const steamIcons = { Arrow: function Arrow() {} };
