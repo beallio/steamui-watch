@@ -82,7 +82,7 @@ function SteamIconExample() {
 }
 ```
 
-`IconBrowser` searches the available names and shows a snippet when you select a cell. It does not copy the snippet. It is not yet tested in Gaming Mode.
+`IconBrowser` searches the available names and shows a snippet when you select a cell. It does not copy the snippet. Put it on a plugin page or a debug panel to find an icon name; directional icons appear once per direction. Without `size`, `SteamIcon` is `1em` square, so it follows the text size.
 
 ### Settings panel with native controls
 
@@ -189,3 +189,13 @@ On 2026-11-23 a test plugin built this way with package 0.4.0 ran in Gaming Mode
 - The package downloaded `decky-extras-v2.json` (HTTP 200), and unloading the plugin ran `stopExtrasUpdates`.
 
 That test did not cover Steam Stable, a physical Deck, controller navigation inside the controls, or a visual check of the drawing.
+
+On the same VM, a second test plugin with the package 0.5.0 build ran the icon API in Gaming Mode:
+
+- `SteamIcon` drew `Clock` at 24 px, `Settings` at 16 px (the `1em` default), and `Arrow` (`direction="right"`) at 24 px. A missing name and `FrameControllerPairing` without `controllerProps` drew their fallbacks.
+- `IconBrowser` drew all 493 names (508 SVGs). With the controller D-pad, focus moved from the search field into the grid cells, and the A button selected a cell: it showed `<SteamIcon name="Accelerometer" />` and called `onSelect` once.
+- Typing `carat` in the search field left 8 cells: `Carat` and `DoubleCarat` in four directions.
+- The console had no errors from the plugin; the only warning was the expected one for the missing name.
+- A `SteamIcon` worked as the plugin's icon in the Decky plugin list.
+
+That test also did not cover Steam Stable, a physical Deck, or a visual check of the drawing.
