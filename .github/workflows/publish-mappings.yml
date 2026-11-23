@@ -197,23 +197,28 @@ jobs:
           else
             echo "::warning::Developer guide generation failed and no valid previous guide was available. Publishing fresh CSS mappings without /guide/."
           fi
+      # One artifact name per attempt: a re-run would otherwise list two github-pages artifacts, which deploy-pages refuses.
       - uses: actions/upload-pages-artifact@v5
         with:
           path: ${{ runner.temp }}/steamui-watch/site
+          name: github-pages-${{ github.run_attempt }}
       - name: Wait for the Pages artifact to be listed
         # deploy-pages lists the run's artifacts once; on 2026-11-23 that list was still empty 0.3 s after the upload.
         env:
           GH_TOKEN: ${{ github.token }}
+          ARTIFACT: github-pages-${{ github.run_attempt }}
         run: |
           for _ in $(seq 30); do
             listed=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
-              --jq 'any(.artifacts[]; .name == "github-pages")') || listed=false
+              --jq "any(.artifacts[]; .name == \"$ARTIFACT\")") || listed=false
             [ "$listed" = true ] && exit 0
             sleep 2
           done
-          echo "::warning::The github-pages artifact is not listed after 60 seconds; deploying anyway."
+          echo "::warning::The $ARTIFACT artifact is not listed after 60 seconds; deploying anyway."
       - uses: actions/deploy-pages@v5
         id: deployment
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
       - name: Publish the Decky extras package
         if: steps.extras.outcome == 'success'
         env:
