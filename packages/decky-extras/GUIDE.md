@@ -14,7 +14,7 @@ Your plugin bundles the package. It works with the standard Decky Loader and off
 Start from a normal Decky plugin (for example the [decky-plugin-template](https://github.com/SteamDeckHomebrew/decky-plugin-template)) that builds with `@decky/rollup`. Then add the package:
 
 ```sh
-npm install https://github.com/beallio/steamui-watch/releases/download/decky-extras-v0.4.0/beallio-decky-extras-0.4.0.tgz
+npm install https://github.com/beallio/steamui-watch/releases/download/decky-extras-v0.5.0/beallio-decky-extras-0.5.0.tgz
 ```
 
 Do not change the Rollup setup. `@decky/rollup` already maps `react` to Steam's React and `@decky/ui` to the loader's library, and it bundles this package into your `dist/index.js`.
@@ -64,6 +64,25 @@ Each wrapper renders nothing when its component is not found in the running Stea
 ## 3. Examples of what to build
 
 The props below are the ones the package's checks render with. Steam does not document these components: test your controls in Gaming Mode, and read the [observed props reference](https://github.com/beallio/steamui-watch/tree/finder-data/props) for more names.
+
+### Steam icons
+
+`SteamIcon` renders a named icon from the running Steam client. Set `size` in pixels and pass `direction` for a directional icon.
+
+```tsx
+import { IconBrowser, SteamIcon } from "@beallio/decky-extras";
+
+function SteamIconExample() {
+  return (
+    <div>
+      <SteamIcon name="Arrow" direction="right" size={24} />
+      <IconBrowser />
+    </div>
+  );
+}
+```
+
+`IconBrowser` searches the available names and shows a snippet when you select a cell. It does not copy the snippet. It is not yet tested in Gaming Mode.
 
 ### Settings panel with native controls
 

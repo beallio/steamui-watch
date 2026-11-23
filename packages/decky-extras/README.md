@@ -9,7 +9,7 @@ New to the package? Read the [guide with examples of what to build](https://gith
 Install the immutable package tarball as a dependency (no npm login is required):
 
 ```sh
-npm install https://github.com/beallio/steamui-watch/releases/download/decky-extras-v0.4.0/beallio-decky-extras-0.4.0.tgz
+npm install https://github.com/beallio/steamui-watch/releases/download/decky-extras-v0.5.0/beallio-decky-extras-0.5.0.tgz
 ```
 
 Keep `react` and `@decky/ui` as the plugin's runtime peers. The standard Decky Rollup setup maps `react` to Steam's `SP_REACT` and `@decky/ui` to the installed Decky frontend library; bundle `@beallio/decky-extras` itself into the plugin. The supported minimum is official `@decky/ui` 4.15.1 (public `createModuleMapping`) and React 16.8 (hooks and `forwardRef`); `@decky/ui` 5.x also works. On Steam ES-module clients, the package uses `createScopeMapping` when available; official 4.x clients fall back to `createModuleMapping`. Finder text atoms support both quote styles used in Steam bundles. The package does not import a bundled copy of either peer.
@@ -64,6 +64,26 @@ const history = findSteamValue("RouterHistoryStore") as { m_history?: unknown } 
 ```
 
 The result is `unknown`: cast it to the shape your plugin needs and check it before use. Objects and functions are Steam's live values, so their fields change as Steam runs. Numbers and strings are never offered, because on ES-module clients they would be copies taken when the loader started. Like `findExtra`, this is a snapshot; call it again after `refreshExtras()`.
+
+### Steam icons
+
+`findSteamIcon(name)` returns the Steam icon component or `null`. `steamIconNames()` returns the sorted names in the active registry.
+
+Use `SteamIcon` to render an icon. `size` sets the SVG width and height in pixels; without it the icon is `1em` square, so it follows the text size (most Steam icons have no size of their own and would fill their container). The wrapper passes other props to the Steam component. The icons come from the `SteamIcons` extra (`findSteamValue("SteamIcons")`), or from `@decky/ui`'s `IconsModule` if that extra is missing.
+
+```tsx
+import { SteamIcon } from "@beallio/decky-extras";
+
+<SteamIcon name="Clock" size={24} fallback={<span>Clock is not available</span>} />
+<SteamIcon name="Arrow" direction="right" size={24} />
+```
+
+Some names may be missing on a Steam build. A missing name warns once and renders `fallback`, or nothing when no fallback is set. Directional icons default to `direction="up"`. `FrameControllerPairing` needs `controllerProps.role`; it renders the fallback when this prop is missing.
+
+`IconBrowser` filters names without regard to case. Its cells support gamepad focus and click. It calls optional `onSelect(name, snippet)` when a user selects a cell, then shows the snippet as text. It does not use the clipboard.
+
+Icon names may be missing on a Steam build, and Stable glyphs may differ from Beta glyphs. The package does not contain Valve SVG paths, CSS, or images; icons render from the user's Steam client.
+
 
 ## Definitions and cache
 

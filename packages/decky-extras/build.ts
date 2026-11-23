@@ -24,6 +24,12 @@ export declare function findExtra(name: ExtraName): ExtraComponent | null;
 export declare function findSteamValue(name: SteamValueName): unknown;
 export declare function refreshExtras(): Promise<boolean>;
 export declare function stopExtrasUpdates(): void;
+export type SteamIconProps = { name: string; size?: number; fallback?: React.ReactNode; [prop: string]: unknown };
+export type IconBrowserProps = { onSelect?: (name: string, snippet: string) => void };
+export declare function findSteamIcon(name: string): React.ComponentType<Record<string, unknown>> | React.ExoticComponent<Record<string, unknown>> | null;
+export declare function steamIconNames(): string[];
+export declare function SteamIcon(props: SteamIconProps): React.ReactElement | null;
+export declare function IconBrowser(props: IconBrowserProps): React.ReactElement;
 `;
 
 await mkdir(outdir, { recursive: true });

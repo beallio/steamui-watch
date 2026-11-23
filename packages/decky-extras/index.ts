@@ -68,3 +68,6 @@ export function refreshExtras(): Promise<boolean> {
 export function stopExtrasUpdates(): void {
   runtime.dispose();
 }
+
+export { findSteamIcon, steamIconNames, SteamIcon, IconBrowser } from "./icons";
+export type { SteamIconProps, IconBrowserProps } from "./icons";
