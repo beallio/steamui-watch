@@ -60,6 +60,7 @@ const { values: args } = parseArgs({
     "report-dir": { type: "string" },
     "snapshot-dir": { type: "string" },
     "props-dir": { type: "string" },
+    "icons-dir": { type: "string" },
     "baseline-dir": { type: "string" },
     "extras-only": { type: "boolean", default: false },
   },
@@ -153,6 +154,18 @@ export function fingerprint(source: string) {
   return { strings: [...strings].sort(), names: [...names].sort() };
 }
 
+/** Sorted Steam icon names and directional components; runs both in the page and in its unit test. */
+export function iconNames(registry: Record<string, unknown>) {
+  const names = Object.keys(registry).sort();
+  const directional = names.filter((name) => {
+    const icon = registry[name] as { render?: unknown; type?: unknown } | null;
+    let source = "";
+    try { source = Function.prototype.toString.call(icon?.render ?? icon?.type ?? icon); } catch {}
+    return /direction:[\w$]+/.test(source) && /case["'`]up["'`]/.test(source);
+  });
+  return { names, directional };
+}
+
 const PROBE = (files: string[], isVite: boolean, extrasOnly = false) => `(async (files, manifest, isVite, extrasOnly) => {
   window.__stubInert = true;
   const out = {
@@ -161,12 +174,14 @@ const PROBE = (files: string[], isVite: boolean, extrasOnly = false) => `(async 
     loader: {},
     extras: Object.fromEntries(Object.keys(manifest.extras).map((name) => [name, "unavailable"])),
     snapshot: {},
+    icons: null,
   };
   let W, C;
   try { ({ W, C } = await (async () => { ${BOOT(isVite)}
     return { W, C }; })()); } catch (e) { out.boot.decky_ui = "threw: " + e; return out; }
   // Finder results are recorded by identity, so it does not matter how a finder searched.
   const fingerprint = ${fingerprint};
+  const iconNames = ${iconNames};
   const where = new Map(), moduleIds = new Map();
   for (const [id, m] of W.scan) {
     if (!m || (typeof m !== "object" && typeof m !== "function")) continue;
@@ -202,6 +217,7 @@ const PROBE = (files: string[], isVite: boolean, extrasOnly = false) => `(async 
   const identity = { SteamIcons: ["@decky/ui IconsModule", C?.IconsModule] };
   for (const [name, matches] of Object.entries(matchExtras(W.scan, manifest))) {
     out.extras[name] = matches.length === 1 && identity[name] && matches[0] !== identity[name][1] ? "not " + identity[name][0] : matches.length;
+    if (name === "SteamIcons" && matches.length === 1 && matches[0] === identity.SteamIcons[1]) out.icons = iconNames(matches[0]);
     if (matches.length === 1) record("extras:" + name, matches[0]);
   }
   for (const k of ["SP_REACT", "SP_REACTDOM", "SP_JSX"]) out.boot[k] = !!window[k];
@@ -294,6 +310,7 @@ type ProbeResult = {
   loader: Record<string, string>;
   extras: Record<string, number | string>;
   snapshot: Record<string, { at: string[]; [key: string]: unknown }>;
+  icons: { names: string[]; directional: string[] } | null;
   factories?: Record<string, string>;
 };
 
@@ -643,6 +660,7 @@ if (import.meta.main) {
         }));
     if (args["report-dir"]) await mkdir(args["report-dir"], { recursive: true });
     if (args["snapshot-dir"]) await mkdir(args["snapshot-dir"], { recursive: true });
+    if (args["icons-dir"]) await mkdir(args["icons-dir"], { recursive: true });
     if (args["props-dir"]) await mkdir(args["props-dir"], { recursive: true });
     for (const { label, root, report } of bundles) {
       const isVite = isViteHtml(await Bun.file(join(root, "index.html")).text());
@@ -673,6 +691,12 @@ if (import.meta.main) {
       if (args["snapshot-dir"] && bad.length === 0) {
         const snapshot = { client: label, decky_ui: ui, modules: out.boot.modules, finders: out.snapshot };
         await Bun.write(join(args["snapshot-dir"], `${report}.decky-ui-${ui}.json`), JSON.stringify(snapshot, null, 2) + "\n");
+      }
+      if (args["icons-dir"] && out.icons) {
+        const [branch, version] = report === "local" ? ["local", "0"] : report.split("-");
+        const snapshot = { schema: 1, branch, version, ...out.icons };
+        await Bun.write(join(args["icons-dir"], `${branch}-${version}.json`), JSON.stringify(snapshot, null, 2) + "\n");
+        console.log(`${label}: SteamIcons: ${out.icons.names.length} names (${out.icons.directional.length} directional)`);
       }
       if (args["props-dir"] && out.factories) {
         const entries = Object.fromEntries(Object.keys(componentsOf(extras)).map((name) => {

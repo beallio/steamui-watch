@@ -56,7 +56,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           baseline="$RUNNER_TEMP/steamui-watch/finder-baseline"
-          mkdir -p "$baseline/snapshots"
+          mkdir -p "$baseline/snapshots" "$baseline/icons"
           gh auth setup-git
           gh repo clone "$GITHUB_REPOSITORY" "$baseline/repo" -- --depth 1 --no-checkout
           status=0
@@ -66,6 +66,9 @@ jobs:
                git -C "$baseline/repo" checkout -q --detach FETCH_HEAD
                if compgen -G "$baseline/repo/snapshots/*.json" >/dev/null; then
                  cp "$baseline/repo"/snapshots/*.json "$baseline/snapshots/"
+               fi
+               if compgen -G "$baseline/repo/icons/*.json" >/dev/null; then
+                 cp "$baseline/repo"/icons/*.json "$baseline/icons/"
                fi ;;
             2) ;;
             *) exit "$status" ;;
@@ -96,7 +99,8 @@ jobs:
           ui() { echo "$RUNNER_TEMP/steamui-watch/decky-ui/$1/package"; }
           bun tools/runtime_probe.ts --decky-ui-webpack "$(ui "$DECKY_UI_WEBPACK")" --decky-ui-esm "$(ui "$DECKY_UI_ESM")" \
             --report-dir "$reports/runtime" --baseline-dir "$RUNNER_TEMP/steamui-watch/finder-baseline/snapshots" \
-            --snapshot-dir "$RUNNER_TEMP/steamui-watch/snapshots" --props-dir "$RUNNER_TEMP/steamui-watch/props"
+            --snapshot-dir "$RUNNER_TEMP/steamui-watch/snapshots" --props-dir "$RUNNER_TEMP/steamui-watch/props" \
+            --icons-dir "$RUNNER_TEMP/steamui-watch/icons"
           # Pre-upgrade check on ES-module clients: the npm latest the fork has not locked yet. Its passes close older upgrade reports.
           upgrade="$reports/upgrade/$DECKY_UI_LATEST"
           mkdir -p "$upgrade"
@@ -113,21 +117,26 @@ jobs:
             done
           fi
       - name: Save finder snapshots
-        # Retain first finder snapshots and prop observations as reviewed versioned evidence.
+        # Retain first finder snapshots and prop and icon observations as reviewed versioned evidence.
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           snapshots="$RUNNER_TEMP/steamui-watch/snapshots"
           props="$RUNNER_TEMP/steamui-watch/props"
+          icons="$RUNNER_TEMP/steamui-watch/icons"
           reports="$RUNNER_TEMP/steamui-watch/reports/props"
           staged="$RUNNER_TEMP/steamui-watch/prop-reports"
+          icon_reports="$RUNNER_TEMP/steamui-watch/reports/icons"
+          icon_staged="$RUNNER_TEMP/steamui-watch/icon-reports"
           data="$RUNNER_TEMP/steamui-watch/finder-data"
           has_snapshots=false
           has_props=false
+          has_icons=false
           if compgen -G "$snapshots/*.json" >/dev/null; then has_snapshots=true; fi
           if compgen -G "$props/*.json" >/dev/null; then has_props=true; fi
-          [ "$has_snapshots" = true ] || [ "$has_props" = true ] || exit 0
+          if compgen -G "$icons/*.json" >/dev/null; then has_icons=true; fi
+          [ "$has_snapshots" = true ] || [ "$has_props" = true ] || [ "$has_icons" = true ] || exit 0
           gh auth setup-git
           gh repo clone "$GITHUB_REPOSITORY" "$data" -- --depth 1 --no-checkout
           # Exit status 2: the branch does not exist yet. Anything else is a real failure.
@@ -138,10 +147,14 @@ jobs:
             2) git -C "$data" checkout -q --orphan finder-data && git -C "$data" rm -rqf --cached --ignore-unmatch . ;;
             *) exit "$status" ;;
           esac
-          mkdir -p "$data/snapshots" "$data/props"
+          mkdir -p "$data/snapshots" "$data/props" "$data/icons"
           if [ "$has_props" = true ]; then
             # Compare before retaining the current first-per-version evidence.
             bun tools/props_report.ts "$props" --baseline-dir "$data/props" --out-dir "$staged"
+          fi
+          if [ "$has_icons" = true ]; then
+            # Compare before retaining the current first-per-version icon names.
+            bun tools/icons_report.ts "$icons" --baseline-dir "$data/icons" --out-dir "$icon_staged"
           fi
           # Keep the first snapshot of each client and @decky/ui version: it is the reviewed baseline.
           for f in "$snapshots"/*.json; do
@@ -157,18 +170,31 @@ jobs:
             reference="$staged/$stem.reference.md"
             [ ! -f "$reference" ] || [ -e "$data/props/$stem.reference.md" ] || cp "$reference" "$data/props/"
           done
+          # Keep the first icon-name snapshot of each client version.
+          for f in "$icons"/*.json; do
+            [ -e "$f" ] || continue
+            [ -e "$data/icons/${f##*/}" ] || cp "$f" "$data/icons/"
+          done
           git -C "$data" config user.name 'github-actions[bot]'
           git -C "$data" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           [ "$has_snapshots" = false ] || git -C "$data" add snapshots
           [ "$has_props" = false ] || git -C "$data" add props
+          [ "$has_icons" = false ] || git -C "$data" add icons
           if ! git -C "$data" diff --cached --quiet; then
-            git -C "$data" commit -qm 'chore(finders): retain Decky finder snapshots and extra prop observations'
+            git -C "$data" commit -qm 'chore(finders): retain Decky finder snapshots, prop observations, and icon names'
             git -C "$data" push -q origin HEAD:finder-data
           fi
-          # Only announce changes whose reference was saved successfully.
+          # Only announce changes whose retained evidence was saved successfully.
           if [ "$has_props" = true ]; then
             mkdir -p "$reports"
             cp "$staged"/*.md "$reports/"
+          fi
+          if [ "$has_icons" = true ]; then
+            mkdir -p "$icon_reports"
+            for f in "$icon_staged"/*.md; do
+              [ -e "$f" ] || continue
+              cp "$f" "$icon_reports/"
+            done
           fi
       - name: Upload Decky extra prop references
         if: always()
@@ -223,7 +249,7 @@ jobs:
         run: |
           reports="$RUNNER_TEMP/steamui-watch/reports"
           issues=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --limit 1000 --json number,title,state --jq '.[] | "\(.number)\t\(.title)\t\(.state)"')
-          for report in "$reports"/static/*.md "$reports"/runtime/*.md "$reports"/upgrade/*/*.md "$reports"/copies/*.md "$reports"/props/*.md; do
+          for report in "$reports"/static/*.md "$reports"/runtime/*.md "$reports"/upgrade/*/*.md "$reports"/copies/*.md "$reports"/props/*.md "$reports"/icons/*.md; do
             [ -e "$report" ] || continue
             name=$(basename "$report" .md)
             case "$report" in
@@ -232,6 +258,7 @@ jobs:
               */upgrade/*) ui=$(basename "$(dirname "$report")"); title="Decky finders failing with @decky/ui $ui in ${name/-/ }" ;;
               */copies/*) title="Decky finder copies out of date ($name)" ;;
               */props/*) title="Decky extra props changed in ${name/-/ }" ;;
+              */icons/*) title="Steam icon names changed in ${name/-/ }" ;;
               *) title="Decky finders missing in ${name/-/ }" ;;
             esac
             number=
@@ -260,6 +287,7 @@ jobs:
             case "$title" in
               "Decky extra props changed in "*) continue ;;
               "Decky finders missing in "*) check=static ;;
+              "Steam icon names changed in "*) continue ;;
               "Decky runtime finders failing in "*) check=runtime ;;
               # Any @decky/ui version: a pass with a newer latest makes an older latest's report moot.
               "Decky finders failing with @decky/ui "*) check='upgrade/*' ;;

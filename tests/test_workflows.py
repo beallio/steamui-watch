@@ -204,8 +204,11 @@ class HistoryPersistenceTest(WorkflowTest):
 class ExtrasPublicationTest(WorkflowTest):
     PREVIOUS_V2 = {"schema": 2, "revision": 2, "extras": {
         "RadioButton": {"kind": "component", "title": "Radio", "description": "", "find": [[{"text": "previous"}]]}}}
+    PREVIOUS_ICONS = {"schema": 1,
+                      "stable": {"version": "100", "names": ["Arrow"], "directional": ["Arrow"]},
+                      "beta": {"version": "200", "names": ["Spinner"], "directional": []}}
 
-    def run_fallback(self, v2_body, v2_status="200"):
+    def run_fallback(self, v2_body, v2_status="200", icons_body=None, icons_status="200"):
         """v2_status "000" is a network failure (curl exit 7)."""
         previous = {"schema": 1, "revision": 2, "components": {
             "RadioButton": {"title": "Radio", "description": "", "find": [[{"text": "previous"}]]}}}
@@ -213,9 +216,16 @@ class ExtrasPublicationTest(WorkflowTest):
         old.write_text(json.dumps(previous))
         old_v2 = self.tmp / "published-v2.json"
         old_v2.write_text(v2_body)
+        icons = self.tmp / "published-icons.json"
+        icons.write_text(icons_body if icons_body is not None else json.dumps(self.PREVIOUS_ICONS))
         curl = self.tmp / "bin" / "curl"
         curl.write_text("#!/usr/bin/env python3\nimport os, shutil, sys\n"
                         'out = sys.argv[sys.argv.index("--output") + 1]\n'
+                        'if any(a.endswith("decky-icons.json") for a in sys.argv):\n'
+                        '    status = os.environ["ICONS_STATUS"]\n'
+                        '    if status == "000": print(status, end=""); sys.exit(7)\n'
+                        '    if status != "404": shutil.copyfile(os.environ["PUBLISHED_ICONS"], out)\n'
+                        '    print(status, end=""); sys.exit(0)\n'
                         'if not any(a.endswith("-v2.json") for a in sys.argv):\n'
                         '    shutil.copyfile(os.environ["PUBLISHED_EXTRAS"], out); sys.exit(0)\n'
                         'status = os.environ["V2_STATUS"]\n'
@@ -232,26 +242,43 @@ class ExtrasPublicationTest(WorkflowTest):
             # Unvalidated candidates must not be served after the probe fails.
             (site / "decky-extras.json").write_text('{"revision":999,"unvalidated":true}')
             (site / "decky-extras-v2.json").write_text('{"revision":999,"unvalidated":true}')
+            (site / "decky-icons.json").write_text('{"schema":999,"unvalidated":true}')
 
         result, runner = self.run_step("publish-mappings.yml", "Retain published extras after validation failure",
                                       cwd=WORKFLOWS.parent.parent, prepare=prepare, V2_STATUS=v2_status,
-                                      PUBLISHED_EXTRAS=str(old), PUBLISHED_EXTRAS_V2=str(old_v2))
+                                      ICONS_STATUS=icons_status, PUBLISHED_EXTRAS=str(old), PUBLISHED_EXTRAS_V2=str(old_v2),
+                                      PUBLISHED_ICONS=str(icons))
         site = runner / "steamui-watch" / "site"
         if result.returncode == 0:
             self.assertEqual(json.loads((site / "decky-extras.json").read_text()), previous)
             self.assertEqual(json.loads((site / "stable.json").read_text()), {"stable": "new"})
             self.assertEqual(json.loads((site / "beta.json").read_text()), {"beta": "new"})
+            if icons_status == "200":
+                self.assertEqual(json.loads((site / "decky-icons.json").read_text()), self.PREVIOUS_ICONS)
+            else:
+                self.assertFalse((site / "decky-icons.json").exists())
         return result, site
 
     def test_failed_extras_check_keeps_both_published_feeds_and_fresh_css(self):
         result, site = self.run_fallback(json.dumps(self.PREVIOUS_V2))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads((site / "decky-extras-v2.json").read_text()), self.PREVIOUS_V2)
+        self.assertEqual(json.loads((site / "decky-icons.json").read_text()), self.PREVIOUS_ICONS)
 
     def test_v2_feed_never_published_is_left_out(self):
         result, site = self.run_fallback("Not Found", "404")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse((site / "decky-extras-v2.json").exists())
+    def test_icon_feed_never_published_is_left_out(self):
+        result, site = self.run_fallback(json.dumps(self.PREVIOUS_V2), icons_status="404")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((site / "decky-icons.json").exists())
+
+    def test_unreadable_or_invalid_published_icon_feed_stops_deployment(self):
+        for body, status in [(json.dumps(self.PREVIOUS_ICONS), "503"), ("", "000"), ('{"schema":1}', "200")]:
+            with self.subTest(status=status):
+                result, _ = self.run_fallback(json.dumps(self.PREVIOUS_V2), icons_body=body, icons_status=status)
+                self.assertNotEqual(result.returncode, 0)
 
     def test_unreadable_or_invalid_published_v2_feed_stops_deployment(self):
         # The step failing skips the Pages upload, so the published pair stays live.
@@ -632,6 +659,11 @@ class DeckyWatchTest(WorkflowTest):
             ("Decky finders failing with @decky/ui 4.16.0 in beta 200", "closed")],
             "only the passing check closes; an older version's pass does not; a newer latest closes an older one's report")
 
+    def test_icon_name_issue_is_not_auto_closed(self):
+        self.watch({"icons": "stable-200"})
+        self.assertEqual(self.watch(passed={"icons": "stable-300"}),
+                         [("Steam icon names changed in stable 200", "open")])
+
 
 class DeckyCopiesTest(WorkflowTest):
     """Report when the decky-loader fork moves past the loader finder copies in this repo."""
@@ -726,7 +758,7 @@ class DeckyCopiesTest(WorkflowTest):
 
 
 class FinderSnapshotTest(WorkflowTest):
-    """Retain first finder snapshots and prop observations, creating the branch on the first run."""
+    """Retain first finder snapshots and prop and icon observations, creating the branch on the first run."""
 
     def setUp(self):
         super().setUp()
@@ -739,7 +771,7 @@ class FinderSnapshotTest(WorkflowTest):
         git("clone", "-q", "--bare", str(seed), str(self.tmp / "remote.git"), cwd=self.tmp)
         self.state["remote"] = f"file://{self.tmp / 'remote.git'}"
 
-    def save(self, props=None, **snapshots):
+    def save(self, props=None, icons=None, **snapshots):
         def prepare(runner_temp):
             folder = runner_temp / "steamui-watch" / "snapshots"
             folder.mkdir(parents=True)
@@ -749,6 +781,11 @@ class FinderSnapshotTest(WorkflowTest):
                 folder = runner_temp / "steamui-watch" / "props"
                 folder.mkdir()
                 for name, content in props.items():
+                    (folder / f"{name}.json").write_text(content)
+            if icons is not None:
+                folder = runner_temp / "steamui-watch" / "icons"
+                folder.mkdir()
+                for name, content in icons.items():
                     (folder / f"{name}.json").write_text(content)
         result, runner = self.run_step("decky-watch.yml", "Save finder snapshots",
                                        cwd=WORKFLOWS.parent.parent, prepare=prepare)
@@ -767,6 +804,9 @@ class FinderSnapshotTest(WorkflowTest):
                 for name, extra in manifest["extras"].items() if extra["kind"] == "component"
             },
         })
+    def icons_json(self, version, names, directional=()):
+        return json.dumps({"schema": 1, "branch": "stable", "version": str(version),
+                           "names": sorted(names), "directional": sorted(directional)})
 
     def open_reports(self, runner):
         def prepare(runner_temp):
@@ -820,6 +860,46 @@ class FinderSnapshotTest(WorkflowTest):
         later = self.save(props={"stable-300": self.props_json(300, ["children", "value"])})
         self.open_reports(later)
         self.assertEqual(self.state["issues"][0]["state"], "open")
+    @unittest.skipUnless(shutil.which("bun"), "needs Bun for icon report integration")
+    def test_first_icon_snapshot_is_a_baseline_and_rerun_commits_nothing(self):
+        first = self.save(icons={"stable-100": self.icons_json(100, ["Arrow", "Spinner"], ["Arrow"])})
+        self.assertEqual(self.branch("ls-tree", "-r", "--name-only", "finder-data").split(),
+                         ["icons/stable-100.json"])
+        self.open_reports(first)
+        self.assertEqual(self.state["issues"], [])
+        before = self.branch("rev-list", "--count", "finder-data")
+
+        rerun = self.save(icons={"stable-100": self.icons_json(100, ["Changed"])})
+        self.assertEqual(self.branch("show", "finder-data:icons/stable-100.json"),
+                         self.icons_json(100, ["Arrow", "Spinner"], ["Arrow"]))
+        self.assertEqual(self.branch("rev-list", "--count", "finder-data"), before)
+        self.assertFalse((rerun / "steamui-watch" / "reports" / "icons" / "stable-100.md").exists())
+
+    @unittest.skipUnless(shutil.which("bun"), "needs Bun for icon report integration")
+    def test_icon_name_change_opens_one_review_issue_and_stays_open(self):
+        first = self.save(icons={"stable-100": self.icons_json(100, ["Arrow", "Spinner"], ["Arrow"])})
+        self.open_reports(first)
+        self.assertEqual(self.state["issues"], [])
+
+        changed = self.save(icons={"stable-200": self.icons_json(200, ["DoubleCarat", "Spinner"], ["DoubleCarat"])})
+        report = changed / "steamui-watch" / "reports" / "icons" / "stable-200.md"
+        self.assertTrue(report.exists())
+        self.assertIn("Added names: `DoubleCarat`", report.read_text())
+        self.open_reports(changed)
+        self.assertEqual([(issue["title"], issue["state"]) for issue in self.state["issues"]],
+                         [("Steam icon names changed in stable 200", "open")])
+
+        before = self.branch("rev-list", "--count", "finder-data")
+        rerun = self.save(icons={"stable-200": self.icons_json(200, ["Arrow", "DoubleCarat", "Spinner"], ["Arrow"])})
+        self.assertEqual(self.branch("show", "finder-data:icons/stable-200.json"),
+                         self.icons_json(200, ["DoubleCarat", "Spinner"], ["DoubleCarat"]))
+        self.assertEqual(self.branch("rev-list", "--count", "finder-data"), before)
+        self.open_reports(rerun)
+        self.assertEqual(len(self.state["issues"]), 1, "a rerun opens no duplicate issue")
+
+        later = self.save(icons={"stable-300": self.icons_json(300, ["DoubleCarat", "Spinner"], ["DoubleCarat"])})
+        self.open_reports(later)
+        self.assertEqual(self.state["issues"][0]["state"], "open")
 
     @unittest.skipUnless(shutil.which("bun"), "needs Bun for props report integration")
     def test_failed_prop_publication_does_not_announce_an_unpublished_reference(self):
@@ -852,17 +932,23 @@ class FinderSnapshotTest(WorkflowTest):
         self.assertEqual(self.branch("rev-list", "--count", "finder-data"), before)
         self.assertEqual(self.branch("log", "-1", "--format=%ae", "finder-data").strip(), BOT)
 
-    def test_fetch_baseline_distinguishes_missing_branch_and_retains_snapshots(self):
+    def test_fetch_baseline_distinguishes_missing_branch_and_retains_snapshots_and_icons(self):
         result, empty = self.run_step("decky-watch.yml", "Fetch finder baseline")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(list((empty / "steamui-watch" / "finder-baseline" / "snapshots").iterdir()), [])
+        self.assertEqual(list((empty / "steamui-watch" / "finder-baseline" / "icons").iterdir()), [])
 
-        self.save(stable_100='{"client":"1"}')
+        icons = {"stable-100": self.icons_json(100, ["Arrow"])} if shutil.which("bun") else None
+        self.save(stable_100='{"client":"1"}', icons=icons)
         result, retained = self.run_step("decky-watch.yml", "Fetch finder baseline")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
             (retained / "steamui-watch" / "finder-baseline" / "snapshots" / "stable_100.json").read_text(),
             '{"client":"1"}')
+        if icons:
+            self.assertEqual(
+                (retained / "steamui-watch" / "finder-baseline" / "icons" / "stable-100.json").read_text(),
+                self.icons_json(100, ["Arrow"]))
 
     def test_fetch_error_is_not_treated_as_missing_branch(self):
         self.state["remote"] = f"file://{self.tmp / 'not-a-repository.git'}"

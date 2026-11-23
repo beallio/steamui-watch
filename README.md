@@ -4,13 +4,14 @@ An automated service and toolkit that keeps Steam Deck themes and Decky plugins 
 
 ## What this project does
 
-When Valve updates the Steam Deck interface, it often scrambles the internal names that themes and plugins rely on. Recent Steam Deck beta updates went even further, removing most human-readable names from Steam's files altogether. This repository watches every Steam Deck update and publishes five things to keep customizations working:
+When Valve updates the Steam Deck interface, it often scrambles the internal names that themes and plugins rely on. Recent Steam Deck beta updates went even further, removing most human-readable names from Steam's files altogether. This repository watches every Steam Deck update and publishes six things to keep customizations working:
 
 - **Theme translation lists (CSS Loader):** Automatically maps old Steam screen names to the newest ones every 6 hours, for both Steam Deck Stable and Beta. It remembers past versions so older themes keep working, even across Steam's newer beta format where readable names are no longer stored in code.
 - **Public Steam Deck interface guide:** Publishes a searchable [online guide](https://beallio.github.io/steamui-watch/guide/) that turns Steam's scrambled internal names back into readable names. Theme and plugin authors can look up any part of the Steam Deck screen, see what it does and where it appears on the Deck, or paste in an existing theme snippet to translate it to the latest beta names.
 - **Early warnings for Decky Loader:** Runs daily checks against Steam Deck Stable and Beta in a headless browser to catch changes that could break Decky Loader or its plugin library before they reach everyone. When something breaks, it opens a GitHub issue (and suggests a replacement search when it can find a clear match) and closes the issue automatically once fixed.
 - **33 extra built-in Steam controls for plugins:** Ships an add-on package ([Decky extras](packages/decky-extras/README.md)) giving plugin authors 33 native Steam controls — such as segmented radio buttons, multi-handle sliders, PIN inputs, warning boxes, reorderable lists, and paged settings — that Decky's standard plugin library does not expose by name. Plugins bundle it themselves, so Steam Deck users do not need a custom Decky Loader.
-- **Local visual previews and control catalog:** Includes local tools you can run on your own computer to see how Steam's controls and ~490 built-in icons actually look and behave using Steam's own styles. Because these previews include Valve's icons and styling, they stay on your computer and are never published to the public website.
+- **Local visual previews and control catalog:** Includes local tools you can run on your own computer to see how Steam's controls and ~490 built-in icons look and behave. Their pictures and styles stay on your computer; only icon names are published online.
+- **Steam icon names:** Publishes the names of Steam's built-in icons for the latest Stable and Beta releases. The list has names only, not pictures.
 
 ## Do I need to do anything?
 
@@ -28,6 +29,7 @@ When Valve updates the Steam Deck interface, it often scrambles the internal nam
   - [Stable theme list](https://beallio.github.io/steamui-watch/stable.json) (normal Steam Deck release)
   - [Beta theme list](https://beallio.github.io/steamui-watch/beta.json) (Steam Deck beta)
   - [Decky extras search list](https://beallio.github.io/steamui-watch/decky-extras-v2.json) (the [older format](https://beallio.github.io/steamui-watch/decky-extras.json) stays for plugins built with versions before 0.4.0)
+  - [Steam icon names](https://beallio.github.io/steamui-watch/decky-icons.json) (the icon names in the current Stable and Beta releases)
 
 ## What happens automatically
 
@@ -39,6 +41,7 @@ When Valve updates the Steam Deck interface, it often scrambles the internal nam
   - Tests Decky Loader and its plugin library against both Stable and Beta (plus upcoming library updates), opening and auto-closing warning issues with suggested repairs when possible.
   - Checks whether this repository's local copies of Decky Loader's own searches need updating.
   - Records the settings each of the 33 extra controls accepts and opens a **"Decky extra props changed"** issue if Steam adds or removes any.
+  - Checks Steam's icon names each day and opens a **"Steam icon names changed"** issue when a name is added or removed.
 
 GitHub can occasionally run scheduled jobs a little late.
 

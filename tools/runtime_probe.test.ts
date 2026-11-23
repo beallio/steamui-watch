@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { cdp, fingerprint, isExtraPassing, isViteHtml } from "./runtime_probe";
+import { cdp, fingerprint, iconNames, isExtraPassing, isViteHtml } from "./runtime_probe";
 
 type Socket = Bun.ServerWebSocket<undefined>;
 
@@ -62,6 +62,14 @@ test("fingerprint keeps string literals and long property names, not names insid
   expect(fingerprint(src)).toEqual({
     strings: ['.notAProp', "Toggle \\\"on\\\"", "x${n}"],
     names: ["checked", "children", "childrenContainerWidth", "className", "jsx", "label", "onChange", "tip"],
+  });
+});
+
+test("Steam icon names are sorted and directional names use the shared source rule", () => {
+  const Arrow = Function('return function({direction:e}){switch(e){case"up":return null;default:return null}}')();
+  expect(iconNames({ Spinner: () => null, Arrow })).toEqual({
+    names: ["Arrow", "Spinner"],
+    directional: ["Arrow"],
   });
 });
 

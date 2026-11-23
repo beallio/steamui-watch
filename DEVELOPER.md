@@ -134,6 +134,28 @@ The daily workflow runs this with the locked `@decky/ui`, not the pre-upgrade ve
 
 Review added and removed names, read the uncertainty notes, and check the affected controls in Steam before changing a plugin. A removed observed read does not prove that a prop stopped working; another code path can consume it.
 
+## Discover and watch Steam icon names
+
+The browser probe can save the names in Steam's `SteamIcons` registry. It also records which icons need a `direction` prop. It saves names only, not Valve's SVG paths, CSS, images, or source code.
+
+```sh
+CHROME=/path/to/chrome bun tools/runtime_probe.ts --icons-dir "$scratch/icon-names"
+bun tools/icons_report.ts "$scratch/icon-names" \
+  --baseline-dir "$scratch/steamui-watch-finder-data/icons" \
+  --out-dir "$scratch/icon-reports"
+```
+
+`--icons-dir` also works with `--extras-only`. The probe writes `<stable|beta>-<version>.json` only when one `SteamIcons` match is the same object as `@decky/ui`'s `IconsModule`. With `--bundle-dir`, it writes `local-0.json`. Each schema 1 snapshot has `branch`, `version`, `names`, and `directional` fields.
+
+The report compares each snapshot with the newest strictly older snapshot for the same branch. It writes `<branch>-<version>.md` only when icon names were added or removed. The report also lists changes in the directional names. A missing or older-schema baseline starts history without an alert.
+
+The daily workflow keeps the first snapshot for each client version in [`finder-data/icons`](https://github.com/beallio/steamui-watch/tree/finder-data/icons). It opens **"Steam icon names changed in <branch> <version>"** issues after the snapshot is saved. These issues need human review and do not close automatically.
+
+The publishing workflow also serves [`decky-icons.json`](https://beallio.github.io/steamui-watch/decky-icons.json). Its schema 1 data has `stable` and `beta` entries. Each entry contains a Steam version, icon names, and directional names. It does not contain icon drawings or other Valve assets. If the extras probe fails, the workflow keeps the last valid icon list. A 404 means no list was published yet; other download or validation errors stop deployment.
+
+Review each reported name against the current Steam client before changing a plugin. Directional names need a direction such as `up`, `down`, `left`, or `right`.
+
+
 ## Build or serve the UI catalog
 
 `tools/decky_catalog.ts` uses the same tools and installed `@decky/ui` copy as the browser check. It draws supported component previews with Steam's own React and CSS. It also lists icons, class maps, helpers, and selected Steam components that `@decky/ui` does not expose by name. Each selected extra component has a source-text finder and a match count for that build.

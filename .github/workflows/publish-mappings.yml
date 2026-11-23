@@ -9,6 +9,7 @@ on:
       - mapping_changes.py
       - packages/decky-extras/**
       - tools/runtime_probe.ts
+      - tools/icons_report.ts
       - tools/dev_guide*.ts
       - tools/dev_guide_client.js
       - package.json
@@ -99,18 +100,21 @@ jobs:
           # The UI packages the fork locks; the extras must not need anything else from our loader fork.
           # Reject this extras update on a miss; CSS delivery still uses the previous extras below.
           bun tools/runtime_probe.ts --extras-only \
-            --decky-ui-webpack "$TMPDIR/decky-ui/webpack/package" --decky-ui-esm "$TMPDIR/decky-ui/esm/package"
+            --decky-ui-webpack "$TMPDIR/decky-ui/webpack/package" --decky-ui-esm "$TMPDIR/decky-ui/esm/package" \
+            --icons-dir "$TMPDIR/icons"
           bun packages/decky-extras/build.ts --outdir "$TMPDIR/extras-package"
           npm pack "$TMPDIR/extras-package" --pack-destination "$TMPDIR" --silent
           # decky-extras.json is the schema 1 copy for 0.2.x/0.3.x; it keeps published finders that need schema 2 atoms.
           curl --fail --location --silent --show-error --max-time 30 \
             https://beallio.github.io/steamui-watch/decky-extras.json --output "$TMPDIR/published-extras.json"
           bun packages/decky-extras/feed.ts --previous "$TMPDIR/published-extras.json" --outdir "$TMPDIR/site"
+          bun -e 'import { publicFeed } from "./tools/icons_report"; await Bun.write(Bun.argv.at(-1), JSON.stringify(await publicFeed(Bun.argv.at(-2)), null, 2) + "\n");' \
+            "$TMPDIR/icons" "$TMPDIR/site/decky-icons.json"
       - name: Retain published extras after validation failure
         if: steps.extras.outcome == 'failure'
         run: |
           dir="$RUNNER_TEMP/steamui-watch"
-          rm -f "$dir/site/decky-extras.json" "$dir/site/decky-extras-v2.json"
+          rm -f "$dir/site/decky-extras.json" "$dir/site/decky-extras-v2.json" "$dir/site/decky-icons.json"
           curl --fail --location --silent --show-error --max-time 30 \
             https://beallio.github.io/steamui-watch/decky-extras.json --output "$dir/previous-extras.json"
           bun -e 'import { parseManifestV1 } from "./packages/decky-extras/match"; parseManifestV1(await Bun.file(Bun.argv.at(-1)).json());' "$dir/previous-extras.json"
@@ -125,6 +129,15 @@ jobs:
               cp "$dir/previous-extras-v2.json" "$dir/site/decky-extras-v2.json" ;;
             404) echo "::warning::No decky-extras-v2.json is published yet; 0.4.0+ plugins use their bundled definitions." ;;
             *) echo "::error::Could not retrieve the published decky-extras-v2.json (HTTP $code)." >&2; exit 1 ;;
+          esac
+          code=$(curl --location --silent --show-error --max-time 30 --write-out '%{http_code}' \
+            https://beallio.github.io/steamui-watch/decky-icons.json --output "$dir/previous-icons.json")
+          case "$code" in
+            200)
+              bun -e 'import { validatePublishedIcons } from "./tools/icons_report"; validatePublishedIcons(await Bun.file(Bun.argv.at(-1)).json());' "$dir/previous-icons.json"
+              cp "$dir/previous-icons.json" "$dir/site/decky-icons.json" ;;
+            404) echo "::warning::No decky-icons.json is published yet; leaving it out." ;;
+            *) echo "::error::Could not retrieve the published decky-icons.json (HTTP $code)." >&2; exit 1 ;;
           esac
           echo "::warning::Extras validation failed. Publishing fresh CSS mappings with the previous extras definitions; skipping the extras release."
       - name: Generate and stage developer guide
