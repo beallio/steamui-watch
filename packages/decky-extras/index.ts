@@ -1,5 +1,5 @@
 import * as React from "react";
-import { createModuleMapping } from "@decky/ui";
+import * as DeckyUI from "@decky/ui";
 import bundled from "./extras.json";
 import { createExtrasRuntime } from "./runtime";
 
@@ -9,10 +9,13 @@ type WrapperProps = ExtraProps & React.RefAttributes<unknown>;
 type RawComponent = React.ComponentType<ExtraProps> | React.ExoticComponent<ExtraProps>;
 
 const names = Object.keys(bundled.components) as ExtraName[];
+const createScopeMapping = (DeckyUI as typeof DeckyUI & {
+  createScopeMapping?: (filter: (module: unknown) => boolean) => Map<string, unknown>;
+}).createScopeMapping;
 const runtime = createExtrasRuntime({
   bundled,
   names,
-  modules: () => createModuleMapping(() => true),
+  modules: () => (createScopeMapping ?? DeckyUI.createModuleMapping)(() => true),
 });
 const warned: Record<string, true> = Object.create(null);
 

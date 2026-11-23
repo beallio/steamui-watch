@@ -600,24 +600,6 @@ class DeckyWatchTest(WorkflowTest):
             ("Decky finders failing with @decky/ui 4.16.0 in beta 200", "closed")],
             "only the passing check closes; an older version's pass does not; a newer latest closes an older one's report")
 
-    def test_upstream_tracker_updates_one_rolling_issue_and_closes_on_pass(self):
-        self.assertEqual(self.watch({"upstream": "beta-200"}), [
-            ("Upstream @decky/ui Vite compatibility tracker", "open")])
-        self.assertEqual(self.state["issues"][0]["body"], "upstream beta-200\n")
-
-        self.assertEqual(self.watch({"upstream": "beta-201"}), [
-            ("Upstream @decky/ui Vite compatibility tracker", "open")],
-            "a newer beta version updates the same rolling tracker instead of opening a second issue")
-        self.assertEqual(self.state["issues"][0]["body"], "upstream beta-201\n")
-
-        self.assertEqual(self.watch(passed={"upstream": "beta-202"}), [
-            ("Upstream @decky/ui Vite compatibility tracker", "closed")],
-            "a publicbeta pass closes the upstream tracker")
-
-        self.assertEqual(self.watch({"upstream": "beta-203"}), [
-            ("Upstream @decky/ui Vite compatibility tracker", "closed")],
-            "a closed tracker is not reopened automatically")
-
 
 class DeckyCopiesTest(WorkflowTest):
     """Report when the decky-loader fork moves past the loader finder copies in this repo."""
@@ -663,11 +645,52 @@ class DeckyCopiesTest(WorkflowTest):
         self.watch()
         self.assertEqual(self.state["issues"][0]["state"], "closed", "copies that match the fork again close the open report")
 
-    def test_missing_lock_version_fails(self):
-        self.state["api"][f"{self.FORK}/contents/frontend/pnpm-lock.yaml"] = {"content": base64.b64encode(b"importers: {}\n").decode()}
-        result, _ = self.run_step("decky-watch.yml", "Get @decky/ui")
+    LOCK = textwrap.dedent("""\
+        importers:
+
+          .:
+            dependencies:
+              '@decky/ui':
+                specifier: ^5.0.0
+                version: 5.0.0
+              '@decky/ui-legacy':
+                specifier: npm:@decky/ui@4.16.4
+                version: '@decky/ui@4.16.4'
+              '@decky/ui-v5':
+                specifier: npm:@decky/ui@5.0.1
+                version: '@decky/ui@5.0.1(typescript@5.9.3)'
+        """)
+
+    def get_ui(self, lock):
+        self.state["api"][f"{self.FORK}/contents/frontend/pnpm-lock.yaml"] = {"content": base64.b64encode(lock.encode()).decode()}
+        # `npm view` answers the latest version; `npm pack` writes a package tarball, as the registry would.
+        npm = self.tmp / "bin" / "npm"
+        npm.write_text("#!/usr/bin/env python3\nimport io, json, sys, tarfile\nargs = sys.argv[1:]\n"
+                       "if args[0] == 'view':\n    print('5.0.2')\n    sys.exit()\n"
+                       "version = args[1].split('@')[-1]\n"
+                       "dest = args[args.index('--pack-destination') + 1]\n"
+                       "data = json.dumps({'version': version}).encode()\n"
+                       "with tarfile.open(f'{dest}/decky-ui-{version}.tgz', 'w:gz') as tar:\n"
+                       "    info = tarfile.TarInfo('package/package.json'); info.size = len(data); tar.addfile(info, io.BytesIO(data))\n")
+        npm.chmod(0o755)
+        env = self.tmp / "github_env"
+        env.write_text("")
+        result, runner = self.run_step("decky-watch.yml", "Get @decky/ui", GITHUB_ENV=str(env))
+        return result, runner, env.read_text()
+
+    def test_lock_gives_the_package_for_each_bundle_format(self):
+        result, runner, env = self.get_ui(self.LOCK)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(env, "DECKY_UI_WEBPACK=4.16.4\nDECKY_UI_ESM=5.0.1\nDECKY_UI_LATEST=5.0.2\n",
+                         "the aliases the fork boots, not the plain @decky/ui it only type-checks against")
+        for version in ("4.16.4", "5.0.1", "5.0.2"):
+            self.assertTrue((runner / "steamui-watch" / "decky-ui" / version / "package" / "package.json").exists())
+
+    def test_lock_without_both_boot_packages_fails(self):
+        old_layout = "importers:\n  .:\n    dependencies:\n      '@decky/ui':\n        specifier: 4.16.4\n        version: 4.16.4\n"
+        result, _, _ = self.get_ui(old_layout)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("no @decky/ui version", result.stderr)
+        self.assertIn("no @decky/ui-legacy or @decky/ui-v5 version", result.stderr)
 
 
 class FinderSnapshotTest(WorkflowTest):

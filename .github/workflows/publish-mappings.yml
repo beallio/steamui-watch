@@ -9,7 +9,6 @@ on:
       - mapping_changes.py
       - packages/decky-extras/**
       - tools/runtime_probe.ts
-      - tools/apply_ui_compat.ts
       - tools/dev_guide*.ts
       - tools/dev_guide_client.js
       - package.json
@@ -69,23 +68,38 @@ jobs:
       - uses: oven-sh/setup-bun@v2.2.0
         with:
           bun-version: "1.3.14"
-      - name: Validate and stage Decky extras
-        id: extras
+      - name: Get @decky/ui
+        # The packages the decky-loader fork boots by client bundle format: @decky/ui-legacy on Webpack,
+        # @decky/ui-v5 on ES modules. A failure here fails the extras and guide steps, which keep their
+        # published versions; CSS delivery goes on.
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          dir="$RUNNER_TEMP/steamui-watch/decky-ui"
+          mkdir -p "$dir"
+          lock=$(gh api repos/beallio/decky-loader/contents/frontend/pnpm-lock.yaml --jq .content | base64 -d)
+          # pnpm locks an npm: alias as `version: '@decky/ui@4.16.4'` two lines below its importer entry.
+          locked() {
+            awk -v name="'@decky/ui-$1':" -v q="'" '$1 == name && !found { getline; getline; sub(/^ *version: */, ""); gsub(q, ""); sub(/^@decky\/ui@/, ""); sub(/[(].*/, ""); print; found = 1 }' <<<"$lock"
+          }
+          for format in webpack:legacy esm:v5; do
+            v=$(locked "${format#*:}")
+            [ -n "$v" ] || { echo "no @decky/ui-${format#*:} version in the decky-loader lock file" >&2; exit 1; }
+            npm pack "@decky/ui@$v" --pack-destination "$dir" --silent
+            mkdir -p "$dir/${format%%:*}"
+            tar -xzf "$dir/decky-ui-$v.tgz" -C "$dir/${format%%:*}"
+          done
+      - name: Validate and stage Decky extras
+        id: extras
+        continue-on-error: true
+        run: |
           export TMPDIR="$RUNNER_TEMP/steamui-watch"
           bun install --frozen-lockfile
-          # Use the upstream UI package the fork locks; the extras must not need our loader fork.
-          ui=$(gh api repos/beallio/decky-loader/contents/frontend/pnpm-lock.yaml --jq .content | base64 -d |
-            awk '/^      .@decky\/ui.:$/ && !found { getline; getline; sub(/^ *version: */, ""); sub(/[(].*/, ""); print; found = 1 }')
-          [ -n "$ui" ] || { echo 'no @decky/ui version in the decky-loader lock file' >&2; exit 1; }
-          npm pack "@decky/ui@$ui" --pack-destination "$TMPDIR" --silent
-          mkdir "$TMPDIR/decky-ui"
-          tar -xzf "$TMPDIR/decky-ui-$ui.tgz" -C "$TMPDIR/decky-ui"
+          # The UI packages the fork locks; the extras must not need anything else from our loader fork.
           # Reject this extras update on a miss; CSS delivery still uses the previous extras below.
-          bun tools/runtime_probe.ts --extras-only --decky-ui "$TMPDIR/decky-ui/package"
+          bun tools/runtime_probe.ts --extras-only \
+            --decky-ui-webpack "$TMPDIR/decky-ui/webpack/package" --decky-ui-esm "$TMPDIR/decky-ui/esm/package"
           bun packages/decky-extras/build.ts --outdir "$TMPDIR/extras-package"
           npm pack "$TMPDIR/extras-package" --pack-destination "$TMPDIR" --silent
           cp packages/decky-extras/extras.json "$TMPDIR/site/decky-extras.json"
@@ -106,15 +120,6 @@ jobs:
         run: |
           export TMPDIR="$RUNNER_TEMP/steamui-watch"
           bun install --frozen-lockfile
-          if [ ! -d "$TMPDIR/decky-ui/package" ]; then
-            ui=$(gh api repos/beallio/decky-loader/contents/frontend/pnpm-lock.yaml --jq .content | base64 -d |
-              awk '/^      .@decky\/ui.:$/ && !found { getline; getline; sub(/^ *version: */, ""); sub(/[(].*/, ""); print; found = 1 }')
-            [ -n "$ui" ] || { echo 'no @decky/ui version in the decky-loader lock file' >&2; exit 1; }
-            npm pack "@decky/ui@$ui" --pack-destination "$TMPDIR" --silent
-            mkdir -p "$TMPDIR/decky-ui"
-            tar -xzf "$TMPDIR/decky-ui-$ui.tgz" -C "$TMPDIR/decky-ui"
-          fi
-          gh api repos/beallio/decky-loader/contents/frontend/rollup.config.js --jq .content | base64 -d > "$TMPDIR/guide-rollup.config.js"
           # Reuse cached metadata-only Webpack baseline from finder-data when available; save once on first run.
           baseline_args=()
           if gh repo clone "$GITHUB_REPOSITORY" "$TMPDIR/finder-data" -- --branch finder-data --depth 1 2>/dev/null; then
@@ -131,8 +136,8 @@ jobs:
           bun tools/dev_guide.ts \
             --mapping-data "$TMPDIR/mappings" \
             --out-dir "$guide_out" \
-            --decky-ui "$TMPDIR/decky-ui/package" \
-            --rollup-config "$TMPDIR/guide-rollup.config.js" \
+            --decky-ui-webpack "$TMPDIR/decky-ui/webpack/package" \
+            --decky-ui-esm "$TMPDIR/decky-ui/esm/package" \
             "${baseline_args[@]}"
           if [ -d "$TMPDIR/finder-data/.git" ] && [ -f "$TMPDIR/finder-data/baselines/webpack-latest.json" ]; then
             git -C "$TMPDIR/finder-data" add baselines/webpack-latest.json

@@ -6,19 +6,17 @@
  *     [--beta-bundle-dir DIR] [--beta-version VER]
  *     [--webpack-bundle-dir DIR] [--webpack-version VER]
  *     [--webpack-baseline FILE] [--save-webpack-baseline FILE]
- *     [--decky-ui DIR] [--rollup-config FILE] [--chrome PATH]
+ *     [--decky-ui-webpack DIR] [--decky-ui-esm DIR] [--chrome PATH]
  *     [--single-file FILE] [--keep]
  *
  * Outputs strict metadata-only `index.html` + `data.json` (zero raw Valve JS bodies,
  * zero verbatim CSS declarations, zero SVGs) styled with Valve's Steam Deck / SteamUI color guide.
  */
-import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import extrasData from "../packages/decky-extras/extras.json";
 import { matchExtras, parseManifest } from "../packages/decky-extras/match";
-import { applyUiCompat } from "./apply_ui_compat";
 import { CANDIDATES, ENTRIES, selectorUsesClass } from "./decky_catalog";
 import {
   analyzeViteChunkAst,
@@ -40,7 +38,7 @@ import {
   type IconEntry,
   type SourcePackage,
 } from "./dev_guide_schema";
-import { buildProbe, fetchBundle, fingerprint, GLOBALS, openSteamPage } from "./runtime_probe";
+import { BOOT, buildProbe, fetchBundle, fingerprint, isViteHtml, openSteamPage } from "./runtime_probe";
 
 const repo = resolve(import.meta.dir, "..");
 const extras = parseManifest(extrasData);
@@ -155,15 +153,14 @@ interface PageRuntimeCollection {
 function buildRuntimeCollectorScript(files: string[], isVite: boolean): string {
   return `(async (files, manifest, isVite) => {
     window.__stubInert = true;
-    const W = await import("/probe/webpack.js");
-    ${GLOBALS}
+    ${BOOT(isVite)}
     const fingerprint = ${fingerprint};
     const JSX_HINT = /\\b(?:jsx|jsxs|jsxDEV|createElement)\\s*\\(/;
     const VITE_HASH = /^_?[A-Za-z0-9_-]{11}-$/;
 
     const where = new Map();
     const moduleIds = new Map();
-    for (const [id, m] of W.modules) {
+    for (const [id, m] of W.scan) {
       if (!m || (typeof m !== "object" && typeof m !== "function")) continue;
       moduleIds.set(m, id);
       for (const k of Object.keys(m)) {
@@ -222,7 +219,7 @@ function buildRuntimeCollectorScript(files: string[], isVite: boolean): string {
     };
 
     for (const k of ["CommonUIModule", "IconsModule", "ReactRouter"]) {
-      if (W[k]) recordVerified(k, "@decky/ui", W[k]);
+      if (C[k]) recordVerified(k, "@decky/ui", C[k]);
     }
     for (const f of files) {
       try {
@@ -236,7 +233,7 @@ function buildRuntimeCollectorScript(files: string[], isVite: boolean): string {
     // decky-extras
     try {
       const matchExtras = ${matchExtras};
-      for (const [name, matches] of Object.entries(matchExtras(W.modules, manifest))) {
+      for (const [name, matches] of Object.entries(matchExtras(W.scan, manifest))) {
         if (matches.length === 1) recordVerified("extras:" + name, "@beallio/decky-extras", matches[0]);
       }
     } catch {}
@@ -258,7 +255,7 @@ function buildRuntimeCollectorScript(files: string[], isVite: boolean): string {
     // IconsModule
     const iconObjs = new Set();
     const icons = [];
-    const iconsMod = W.IconsModule ?? {};
+    const iconsMod = C.IconsModule ?? {};
     for (const name of Object.keys(iconsMod).sort()) {
       const v = iconsMod[name];
       if (!v) continue;
@@ -294,7 +291,7 @@ function buildRuntimeCollectorScript(files: string[], isVite: boolean): string {
     }
 
     return {
-      moduleCount: W.modules.size,
+      moduleCount: W.scan.size,
       verified,
       icons,
       exports: exportsOut,
@@ -395,13 +392,13 @@ export function scopePreviewCssForGamepadMode(css: string): string {
     .replace(/\bbody((?:\.[A-Za-z0-9_-]+)+)(?=[\s>+~:{,])/g, ".preview-stage$1");
 }
 
-function buildPreviewCollectorScript(): string {
+function buildPreviewCollectorScript(isVite: boolean): string {
   return `(async (entries, candidates, manifest) => {
     const w = window;
     w.__stubInert = true;
     document.documentElement.classList.add("GamepadMode", "responsive");
     document.body.classList.add("GamepadMode", "BasicUI");
-    const W = await import("/probe/webpack.js");
+    ${BOOT(isVite)}
     const L = await import("/probe/index.js");
     const R = w.SP_REACT, D = w.SP_REACTDOM;
     if (!R || !D) return { components: {}, icons: {}, css: "" };
@@ -411,7 +408,7 @@ function buildPreviewCollectorScript(): string {
       try { return typeof f === "function" ? Function.prototype.toString.call(f) : ""; } catch { return ""; }
     };
     const where = new Map();
-    for (const [id, m] of W.modules) {
+    for (const [id, m] of W.scan) {
       if (!m || (typeof m !== "object" && typeof m !== "function")) continue;
       for (const k of Object.keys(m)) {
         let v; try { v = m[k]; } catch { continue; }
@@ -428,9 +425,9 @@ function buildPreviewCollectorScript(): string {
       ?? W.findModule((m) => typeof m?.createRoot === "function")?.createRoot;
     if (typeof createRoot !== "function") return { components: {}, icons: {}, css: "" };
 
-    const provider = Object.values(W.CommonUIModule ?? {}).find((v) => typeof v === "function" && /SliderField:/.test(src(v)) && /\\.Provider/.test(src(v)))
+    const provider = Object.values(C.CommonUIModule ?? {}).find((v) => typeof v === "function" && /SliderField:/.test(src(v)) && /\\.Provider/.test(src(v)))
       ?? [...where.keys()].find((v) => typeof v === "function" && /SliderField:/.test(src(v)) && /\\.Provider/.test(src(v)));
-    const Router = Object.values(L.ReactRouter ?? {}).find((v) => /history\\.location/.test(src(v)) && /_isMounted/.test(src(v)));
+    const Router = Object.values(C.ReactRouter ?? {}).find((v) => /history\\.location/.test(src(v)) && /_isMounted/.test(src(v)));
     const memoryHistory = one((s) => s.includes("initialEntries") && s.includes("getUserConfirmation"));
     const QueryProvider = one((s) => s.length < 600 && s.includes("client:") && s.includes(".mount()"));
     const QueryClient = one((s) => s.startsWith("class") && s.includes("getQueryCache(){"));
@@ -451,7 +448,7 @@ function buildPreviewCollectorScript(): string {
     }
 
     const matchExtras = ${matchExtras};
-    const found = matchExtras(W.modules, manifest);
+    const found = matchExtras(W.scan, manifest);
     const K = {};
     for (const c of candidates) {
       const all = found[c.id] ?? [];
@@ -494,7 +491,7 @@ function buildPreviewCollectorScript(): string {
     }
 
     const icons = {};
-    const iconsMod = L.IconsModule ?? W.IconsModule ?? {};
+    const iconsMod = C.IconsModule ?? {};
     for (const name of Object.keys(iconsMod).sort()) {
       const fn = iconsMod[name];
       if (!fn) continue;
@@ -538,17 +535,20 @@ function buildPreviewCollectorScript(): string {
 async function runBundleRuntimeProbe(opts: {
   root: string;
   work: string;
-  deckyUiDir: string;
+  uiWebpackPackage: string;
+  uiEsmPackage: string;
   chrome: string;
   withPreviews?: boolean;
 }): Promise<{ isVite: boolean; data: PageRuntimeCollection; previews?: CapturedPreviews }> {
-  const files = await buildProbe(opts.root, opts.work, opts.deckyUiDir, opts.withPreviews ? ["index.js"] : []);
+  const isVite = isViteHtml(await Bun.file(join(opts.root, "index.html")).text());
+  const uiPackage = isVite ? opts.uiEsmPackage : opts.uiWebpackPackage;
+  const files = await buildProbe(opts.root, opts.work, uiPackage, isVite, opts.withPreviews ? ["index.js"] : []);
   const page = await openSteamPage(opts.root, opts.work, opts.chrome);
   try {
     const data = await page.evaluate<PageRuntimeCollection>(buildRuntimeCollectorScript(files, page.isVite));
     let previews: CapturedPreviews | undefined;
     if (opts.withPreviews) {
-      const rawPreviews = await page.evaluate<CapturedPreviews>(buildPreviewCollectorScript());
+      const rawPreviews = await page.evaluate<CapturedPreviews>(buildPreviewCollectorScript(page.isVite));
       const inlined = await inlineLocalPreviewAssets(rawPreviews, opts.root);
       previews = { ...inlined, css: scopePreviewCssForGamepadMode(inlined.css) };
     }
@@ -622,8 +622,8 @@ async function main() {
       "webpack-version": { type: "string" },
       "webpack-baseline": { type: "string" },
       "save-webpack-baseline": { type: "string" },
-      "decky-ui": { type: "string", default: resolve(repo, "../decky-loader/frontend/node_modules/@decky/ui") },
-      "rollup-config": { type: "string" },
+      "decky-ui-webpack": { type: "string", default: resolve(repo, "../decky-loader/frontend/node_modules/@decky/ui-legacy") },
+      "decky-ui-esm": { type: "string", default: resolve(repo, "../decky-loader/frontend/node_modules/@decky/ui-v5") },
       chrome: { type: "string", default: process.env.CHROME ?? "google-chrome" },
       "with-previews": { type: "boolean", default: false },
       keep: { type: "boolean", default: false },
@@ -648,21 +648,7 @@ async function main() {
     console.log(`  beta dump: ${mapData.betaVersion} (${Object.keys(mapData.betaDump).length} CSS modules)`);
     console.log(`  webpack dump: ${mapData.webpackVersion} (${Object.keys(mapData.webpackDump).length} CSS modules)`);
 
-    // 2. Prepare @decky/ui (optionally applying viteCompatDeckyUi() for Vite beta)
-    let betaUiDir = resolve(values["decky-ui"]!);
-    const defaultRollup = resolve(repo, "../decky-loader/frontend/rollup.config.js");
-    const rollupConfig = values["rollup-config"]
-      ? resolve(values["rollup-config"])
-      : (existsSync(defaultRollup) ? defaultRollup : undefined);
-
-    if (rollupConfig) {
-      const patchedUi = join(work, "decky-ui-vite-compat");
-      const changed = await applyUiCompat(rollupConfig, betaUiDir, patchedUi);
-      console.log(`  applied viteCompatDeckyUi() to ${changed.length} @decky/ui file(s)`);
-      betaUiDir = patchedUi;
-    }
-
-    // 3. Acquire & probe Beta Vite bundle
+    // 2. Acquire and probe the Beta bundle, using the package for its detected format.
     let betaRoot: string;
     let betaVersion = values["beta-version"] ?? mapData.betaVersion;
     if (values["beta-bundle-dir"]) {
@@ -700,7 +686,8 @@ async function main() {
     const betaProbe = await runBundleRuntimeProbe({
       root: betaRoot,
       work: join(work, "beta-chrome"),
-      deckyUiDir: betaUiDir,
+      uiWebpackPackage: resolve(values["decky-ui-webpack"]!),
+      uiEsmPackage: resolve(values["decky-ui-esm"]!),
       chrome: values.chrome!,
       withPreviews,
     });
@@ -710,7 +697,7 @@ async function main() {
       console.log(`  Visual previews captured: ${okComps} components, ${Object.keys(betaProbe.previews.icons).length} SVG icons, ${Math.round(betaProbe.previews.css.length / 1024)} KB scoped Steam CSS`);
     }
 
-    // 4. Load or generate Webpack baseline (1794536281)
+    // 3. Load or generate Webpack baseline (1794536281)
     let webpackBaseline: WebpackBaselineFile;
     if (values["webpack-baseline"]) {
       console.log(`Loading cached Webpack baseline from ${values["webpack-baseline"]}...`);
@@ -730,7 +717,8 @@ async function main() {
       const wpProbe = await runBundleRuntimeProbe({
         root: wpRoot,
         work: join(work, "webpack-chrome"),
-        deckyUiDir: resolve(values["decky-ui"]!),
+        uiWebpackPackage: resolve(values["decky-ui-webpack"]!),
+        uiEsmPackage: resolve(values["decky-ui-esm"]!),
         chrome: values.chrome!,
       });
       const wpCssKeys = new Set<string>();
@@ -747,7 +735,7 @@ async function main() {
       }
     }
 
-    // 5. Run dual-bundle Webpack -> Vite export matching
+    // 4. Run dual-bundle Webpack -> Vite export matching
     console.log("Matching unnamed exports across Webpack -> Vite...");
     const viteRuntimeExports: ViteRuntimeExport[] = betaProbe.data.exports.map((e, i) => ({
       id: `rt:${i}:${e.at[0] ?? i}`,
@@ -762,7 +750,7 @@ async function main() {
     const webpackMatches = matchWebpackToVite(webpackBaseline.exports, viteRuntimeExports, cssIndex.hashToSemantic);
     console.log(`  matched ${webpackMatches.size} / ${viteRuntimeExports.length} runtime exports back to Webpack`);
 
-    // 6. Merge verified runtime entries with Webpack baseline verified locations
+    // 5. Merge verified runtime entries with Webpack baseline verified locations
     const verifiedRuntime: Record<string, VerifiedRuntimeEntry> = {};
     for (const [label, info] of Object.entries(betaProbe.data.verified)) {
       verifiedRuntime[label] = {
@@ -784,7 +772,7 @@ async function main() {
       directional: ic.directional,
     }));
 
-    // 7. Assemble & validate public GuideData
+    // 6. Assemble & validate public GuideData
     const guideData = buildGuideData({
       betaMeta: {
         branch: "publicbeta",
@@ -812,7 +800,7 @@ async function main() {
       throw new Error(`Public Valve-asset boundary validation failed:\n${violations.slice(0, 10).join("\n")}`);
     }
 
-    // 8. Write outputs
+    // 7. Write outputs
     await mkdir(outDir, { recursive: true });
     await Bun.write(join(outDir, "data.json"), JSON.stringify(guideData));
     await Bun.write(join(outDir, "index.html"), renderGuideHtml({ dataUrl: "./data.json" }));

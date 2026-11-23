@@ -4,13 +4,15 @@
  *
  *   bun tools/finder_table.ts [DECKY_UI_PACKAGE] > table.json
  *
- * Every top-level declaration whose value comes from a Steam search (findModule*, findClassModule,
- * `.find`/`.filter` over modules) becomes one entry. Its predicate becomes clauses that must all
- * match; each clause lists alternatives: `.includes()` text, regex literals, `createPropListRegex`
- * prop lists, and property names the predicate tests (`m.X`, `"X" in m`). Negated tests and generic
- * names (`toString`, `render`, ...) say nothing about the bundle and are dropped. Class finders list
- * the class names a module must have and must lack.
- * Exit status 1 when a predicate uses a form this reader does not know, so the table cannot miss it silently.
+ * Every top-level declaration whose value comes from a Steam search (findModule*, findVar and the
+ * other scope searches of @decky/ui 5, findClassModule, `.find`/`.filter` over modules) becomes one
+ * entry. Its predicate becomes clauses that must all match; each clause lists alternatives:
+ * `.includes()` text, regex literals, `createPropListRegex` prop lists, and property names the
+ * predicate tests (`m.X`, `"X" in m`). Negated tests and generic names (`toString`, `render`, ...)
+ * say nothing about the bundle and are dropped. Class finders list the class names a module must
+ * have and must lack. `prop_prefix` is the package's own `createPropListRegex` prefix.
+ * Exit status 1 when a predicate uses a form or a find* helper this reader does not know, so the
+ * table cannot miss it silently.
  */
 import { parse } from "acorn";
 import { join, relative, resolve } from "node:path";
@@ -22,7 +24,9 @@ export type Atom = { text: string } | { regex: string } | { name: string } | { p
 type Cnf = Atom[][];
 export type Entry = { name: string; code: Cnf } | { name: string; classes: { has: string[]; lacks: string[] } };
 
-const SEARCH_HELPERS = new Set(["findModule", "findModuleExport", "findModuleByExport", "findModuleDetailsByExport", "findModuleChild"]);
+const SEARCH_HELPERS = new Set(["findModule", "findModuleExport", "findModuleByExport", "findModuleDetailsByExport", "findModuleChild", "findVar", "findModuleScopeByVar", "findScopeDetailsByVar", "findScope"]);
+// find* helpers that walk a React tree or return SP's window: no Steam module search.
+const NON_SEARCH_HELPERS = new Set(["findSP", "findInTree", "findInReactTree"]);
 const CLASS_HELPERS = new Set(["findClassModule", "findClass", "findClassByName"]);
 // Names every object or function has: a test for them finds nothing in the bundle.
 const GENERIC = new Set(["toString", "render", "type", "prototype", "length", "call", "apply"]);
@@ -128,6 +132,8 @@ class Reader {
       return this.predicate(n.arguments[0]);
     }
     if (callee.type === "Identifier" && CLASS_HELPERS.has(callee.name)) return this.fail(`${callee.name} outside a declaration`, n);
+    if (callee.type === "Identifier" && /^find[A-Z]/.test(callee.name) && !NON_SEARCH_HELPERS.has(callee.name))
+      return this.fail(`unknown search helper ${callee.name}`, n);
     if (callee.type !== "MemberExpression") return unknown("a function call");
     const method = propName(callee);
     if (method === "includes") {
@@ -137,6 +143,13 @@ class Reader {
     if (method === "test") {
       const re = callee.object;
       if (re.type === "Literal" && re.regex) return re.regex.flags ? this.fail(`regex flags /${re.regex.flags}`, n) : [[{ regex: re.regex.pattern }]];
+      if (re.type === "CallExpression" && re.callee.type === "Identifier" && re.callee.name === "createPropListRegex") {
+        const [list, fromStart] = re.arguments;
+        const props = list?.type === "ArrayExpression" ? list.elements.map(literalText) : [];
+        if (!props.length || props.includes(undefined) || (fromStart && fromStart.type !== "Literal"))
+          return this.fail("createPropListRegex arguments are not literals", re);
+        return [[{ props: props as string[], from_start: fromStart ? Boolean(fromStart.value) : true }]];
+      }
       if (re.type === "Identifier" && this.propRegexes.has(re.name)) return [[this.propRegexes.get(re.name)!]];
       return this.fail("`.test()` on an unknown regex", n);
     }
@@ -210,6 +223,13 @@ class Reader {
   }
 }
 
+/** Reads the literal prefix used by createPropListRegex when fromStart is true. */
+export function readPropPrefix(source: string) {
+  const match = source.match(/regexString\s*=\s*fromStart\s*\?\s*("(?:\\.|[^"\\])*")\s*:\s*""/);
+  if (!match) throw new Error("cannot read createPropListRegex from-start prefix");
+  return match[1].slice(1, -1);
+}
+
 /** The entries of one dist file. Unknown predicate forms are listed in `unread`. */
 export function readSource(source: string, file: string) {
   const program = parse(source, { ecmaVersion: "latest", sourceType: "module" });
@@ -268,5 +288,6 @@ if (import.meta.main) {
     process.exit(1);
   }
   const { version } = await Bun.file(join(pkg, "package.json")).json();
-  console.log(JSON.stringify({ ui: version, finders }, null, 1));
+  const propPrefix = readPropPrefix(await Bun.file(join(dist, "utils/react/react.js")).text());
+  console.log(JSON.stringify({ ui: version, prop_prefix: propPrefix, finders }, null, 1));
 }

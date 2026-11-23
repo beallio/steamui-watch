@@ -37,7 +37,6 @@ When Valve updates the Steam Deck interface, it often scrambles the internal nam
 - **Once a day — sync upstream theme history:** Checks the DeckThemes team's mapping repository and merges safe data updates automatically, or opens a **"DeckThemes mappings changed"** issue when human review is needed.
 - **Once a day — Decky compatibility and control checks:**
   - Tests Decky Loader and its plugin library against both Stable and Beta (plus upcoming library updates), opening and auto-closing warning issues with suggested repairs when possible.
-  - Tracks upstream Decky UI library compatibility with Steam's new beta format in a rolling issue.
   - Checks whether this repository's local copies of Decky Loader's own searches need updating.
   - Records the settings each of the 33 extra controls accepts and opens a **"Decky extra props changed"** issue if Steam adds or removes any.
 

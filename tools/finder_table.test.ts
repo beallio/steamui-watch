@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { readSource } from "./finder_table";
+import { readPropPrefix, readSource } from "./finder_table";
 
 const table = (src: string) => readSource(src, "f.js");
 
@@ -34,6 +34,25 @@ test("block predicates, chained private searches and class finders", () => {
     { name: "f.js: C", code: [[{ text: "(function()" }]] },
     { name: "f.js: cls", classes: { has: ["Title"], lacks: ["vr-bar"] } },
   ]);
+});
+
+
+test("v5 variable-scope finders are read", () => {
+  const { entries, unread } = table(`
+    export const Carousel = findVar((e) => e.render?.toString().includes('setFocusedColumn:'));
+  `);
+  expect(unread).toEqual([]);
+  expect(entries).toEqual([{ name: "f.js: Carousel", code: [[{ text: "setFocusedColumn:" }]] }]);
+});
+
+test("unknown find helpers are reported unread", () => {
+  const { entries, unread } = table(`export const A = findFoo((e) => e.toString().includes("needle"));`);
+  expect(entries).toEqual([]);
+  expect(unread[0]).toContain("unknown search helper findFoo");
+});
+
+test("prop prefix is read from react.js source", () => {
+  expect(readPropPrefix('let regexString = fromStart ? "(?:const|let)\\{" : "";')).toBe("(?:const|let)\\{");
 });
 
 test("unknown predicate forms are reported, not dropped", () => {

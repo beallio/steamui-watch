@@ -64,27 +64,31 @@ A successful run does not prove that every theme translates correctly. The parse
 
 A finder is the search code Decky uses to locate a Steam component or store. The two checks below cover different failure cases. Neither proves that plugins work in Gaming Mode.
 
+The `beallio/decky-loader` fork picks its `@decky/ui` by the client's bundle format, not by its branch: Webpack clients boot `@decky/ui-legacy` (4.x) with the shims in `frontend/src/stable/boot.ts`, and ES-module (Vite/Rolldown) clients boot `@decky/ui-v5` (5.x), whose module system reads each module's scope over CDP. Both checks do the same. Use the versions locked in the fork's `frontend/pnpm-lock.yaml`.
+
 ### Source-text check
 
 ```sh
 bun install
-bun tools/finder_table.ts /path/to/@decky/ui > "$scratch/finder-table.json"
-python3 decky_watch.py --ui-finders "$scratch/finder-table.json" "$scratch/decky-reports"
-python3 decky_watch.py --ui-finders "$scratch/finder-table.json" "$scratch/decky-beta-reports" --branch publicbeta
+bun tools/finder_table.ts /path/to/@decky/ui-legacy > "$scratch/finders-webpack.json"
+bun tools/finder_table.ts /path/to/@decky/ui-v5 > "$scratch/finders-esm.json"
+python3 decky_watch.py --ui-finders-webpack "$scratch/finders-webpack.json" --ui-finders-esm "$scratch/finders-esm.json" "$scratch/decky-reports"
 ```
 
-`tools/finder_table.ts` reads the `@decky/ui` package's `dist/` and writes its finders as JSON. Without a path, it uses `../decky-loader/frontend/node_modules/@decky/ui`. For each finder it lists the text, regexes, prop lists and property names the predicate needs. It stops with status 1 if a predicate uses a form it cannot read; then add that form to the tool. The loader's finders stay in `FINDERS` in `decky_watch.py`.
+`tools/finder_table.ts` reads the `@decky/ui` package's `dist/` and writes its finders as JSON. Without a path, it uses `../decky-loader/frontend/node_modules/@decky/ui`. For each finder it lists the text, regexes, prop lists and property names the predicate needs. It stops with status 1 if a predicate uses a form it cannot read; then add that form to the tool. The loader's finders stay in `FINDERS` in `decky_watch.py`; the ones from `stable/boot.ts` are checked on Webpack clients only.
 
-`decky_watch.py` needs no data checkout. It prints missing-finder counts and writes one report per failing branch as `<stable|beta>-<version>.md`, and an empty `<stable|beta>-<version>.ok` for each passing branch. A text hit only proves that the text is somewhere in the bundle, not that the real finder selects the right object. Property and method checks see names only.
+`decky_watch.py` needs no data checkout. It prints missing-finder counts and writes one report per failing branch as `<stable|beta>-<version>.md`, and an empty `<stable|beta>-<version>.ok` for each passing branch. It searches Steam's source as shipped: on ES-module clients, string literals use backticks. A text hit only proves that the text is somewhere in the bundle, not that the real finder selects the right object. Property and method checks see names only.
 
 ### Browser check
 
-`tools/runtime_probe.ts` runs the real `@decky/ui` finders per file and copied loader predicates in headless Chrome. It needs Bun, `unzip`, Chrome, and an installed copy of `@decky/ui`. By default it uses `../decky-loader/frontend/node_modules/@decky/ui`, from a Decky Loader checkout with its frontend packages installed.
+`tools/runtime_probe.ts` runs the real `@decky/ui` finders per file and copied loader predicates in headless Chrome. It needs Bun, `unzip`, Chrome, and installed copies of both `@decky/ui` packages. By default it uses `@decky/ui-legacy` and `@decky/ui-v5` from `../decky-loader/frontend/node_modules`, a Decky Loader checkout with its frontend packages installed. A package path that does not exist stops the probe with status 2; pass an empty path (`--decky-ui-webpack ''`) to skip that format's clients.
 
 ```sh
 CHROME=/path/to/chrome bun tools/runtime_probe.ts
-CHROME=/path/to/chrome bun tools/runtime_probe.ts --branch publicbeta --decky-ui /path/to/@decky/ui
+CHROME=/path/to/chrome bun tools/runtime_probe.ts --branch publicbeta --decky-ui-esm /path/to/@decky/ui-v5
 ```
+
+The page is served at Steam's own origin, `https://steamloopback.host`, through CDP request interception. On ES-module clients, the probe answers `@decky/ui` 5's scope lookups the way the fork's backend does (`backend-rust/src/cef.rs`). Extras and repairs search module scopes there, as `@beallio/decky-extras` does.
 
 The default checks stable and beta. It prints results for each version and lists failed finders. It exits with status 1 if any finder fails. With `--report-dir DIR`, it writes reports for failing versions and an empty `.ok` file for each passing version, and reserves nonzero exit status for execution errors, as the workflow does.
 
@@ -105,7 +109,7 @@ The report includes the baseline name, old and candidate export locations, match
 
 For toast dismissal, the browser check verifies that `NotificationStore.RemoveGroupFromTray` and `NotificationStore.RemoveFromToastsWhere` are callable. The source-text check looks for both method names.
 
-The browser uses a `SteamClient` stand-in, not a real Steam client. React-tree finders still need Gaming Mode. The history check verifies the store's shape, not that Gaming Mode has populated `m_history`. Confirm failures on a Steam Deck or SteamOS VM.
+The browser uses a `SteamClient` stand-in, not a real Steam client. React-tree finders still need Gaming Mode. The history check verifies the store's shape with the loader's `findModuleExport` search, not that Gaming Mode has populated `m_history`. Prop recording (`--props-dir`) needs Webpack module factories and runs on Webpack clients only. Confirm failures on a Steam Deck or SteamOS VM.
 
 ## Discover and watch extra-component props
 
@@ -149,15 +153,15 @@ bun tools/decky_catalog.ts --serve
 
 Open the printed local address in Chrome or Chromium. The page runs Steam's code: toggles switch, sliders move, and supported menus and dialogs open. An event log shows callbacks. Stop it with Ctrl-C. Controller navigation, sounds, and features that need a running Steam client do not work there.
 
-These tools also accept `--bundle-dir DIR` to use an extracted `steamui` directory and `--decky-ui PATH` to select the library. Finders and minified module/export keys must be checked on each Steam build; a unique match is not a guarantee of future compatibility.
+These tools also accept `--bundle-dir DIR` to use an extracted `steamui` directory, and `--decky-ui-webpack PATH` and `--decky-ui-esm PATH` to select the library for each bundle format. Finders and minified module/export keys must be checked on each Steam build; a unique match is not a guarantee of future compatibility.
 
 Catalog output contains Valve's styles, icons, and images. `docs/local/` is Git-ignored; do not publish the generated files or commit downloaded bundles.
 
 ## Extra components for standard Decky plugins
 
-[`@beallio/decky-extras`](packages/decky-extras/README.md) is bundled inside each plugin; official `@decky/ui` and React remain external and come from the user's loader. Do not add extras to `DFL` or require our fork. The package uses the public `createModuleMapping` API from official `@decky/ui` 4.15.1 or newer.
+[`@beallio/decky-extras`](packages/decky-extras/README.md) is bundled inside each plugin; official `@decky/ui` and React remain external and come from the user's loader. Do not add extras to `DFL` or require our fork. The package searches with `createScopeMapping` when the loader's `@decky/ui` has it (5.x, and the fork's Webpack boot, which maps it to modules), and otherwise with the public `createModuleMapping` API of official `@decky/ui` 4.15.1 or newer. On ES-module clients, module scopes hold components that a chunk does not export.
 
-`packages/decky-extras/extras.json` is the single extras list for the package, catalog and runtime probe. Official components still come from the real `@decky/ui` package. The extras list contains stable component names, titles, descriptions, and AND clauses of OR atoms. Atoms can only match literal text, a whole member name, or a destructuring default binding. No downloaded JavaScript, regular expressions, module IDs, or remote URLs are allowed.
+`packages/decky-extras/extras.json` is the single extras list for the package, catalog and runtime probe. Official components still come from the real `@decky/ui` package. The extras list contains stable component names, titles, descriptions, and AND clauses of OR atoms. Atoms can only match literal text (including double- and backtick-quoted source spellings), a whole member name, or a destructuring default binding. No downloaded JavaScript, regular expressions, module IDs, or remote URLs are allowed.
 
 To correct a finder, edit its clauses and increase `revision`. Run the probe on stable and beta. Every extra must match exactly one distinct Steam object. Re-exports of that same object count once. These checks establish identity and presence, not prop meaning or controller behavior.
 
@@ -221,7 +225,7 @@ To skip the change, close the issue without advancing the baseline. A closed iss
 
 ## Keeping the Decky checks current
 
-[Watch Decky finders](.github/workflows/decky-watch.yml) runs the text and browser checks daily. The browser check installs the `@decky/ui` version locked by `beallio/decky-loader`. When npm's `latest` `@decky/ui` is newer, the browser check runs again with it as a pre-upgrade check and opens **"Decky finders failing with @decky/ui <version> in <branch> <client>"** issues. Fix those before the fork upgrades.
+[Watch Decky finders](.github/workflows/decky-watch.yml) runs the text and browser checks daily. It installs the `@decky/ui-legacy` and `@decky/ui-v5` versions locked by `beallio/decky-loader` and uses each for its bundle format. When npm's `latest` `@decky/ui` differs from the locked `@decky/ui-v5`, the browser check runs again with it on ES-module clients as a pre-upgrade check and opens **"Decky finders failing with @decky/ui <version> in <branch> <client>"** issues. Fix those before the fork upgrades.
 
 The workflow also compares the copied finder versions with the fork's lock file and changed frontend lines that search Steam's code or use its globals. This comparison is a heuristic: some reported changes need no check update, and it can miss relevant changes.
 
@@ -237,7 +241,7 @@ When a **"Decky finder copies out of date"** issue opens:
 4. Run the checks against current stable and beta bundles. Confirm checks that need Gaming Mode on a Deck or SteamOS VM.
 5. Publish the reviewed changes. The issue closes by itself on the next run.
 
-A new `@decky/ui` version in the fork needs no update here: each run reads the finders from the locked version. If the text check step fails with "Cannot read … predicate part(s)", teach `tools/finder_table.ts` the new form.
+A new `@decky/ui-legacy` or `@decky/ui-v5` version in the fork needs no update here: each run reads the finders from the locked versions. If the text check step fails with "Cannot read … predicate part(s)", teach `tools/finder_table.ts` the new form.
 
 For **"Decky finders missing"** and **"Decky runtime finders failing"**, confirm the problem on the reported Steam version, fix the Decky finder or the incorrect local check, then close the issue. The workflow does not reopen a closed report with the same check and version.
 

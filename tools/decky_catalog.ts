@@ -4,8 +4,8 @@
  * Steam's own React and CSS, every IconsModule icon, the class maps and helpers, and Steam components that
  * @decky/ui does not name, each found by the shared data-only finder definitions.
  *
- *   bun tools/decky_catalog.ts [--branch stable|publicbeta] [--bundle-dir DIR] [--decky-ui PATH] [--chrome PATH] [--out FILE]
- *   bun tools/decky_catalog.ts --serve [--port N] [--branch …] [--bundle-dir DIR] [--decky-ui PATH]
+ *   bun tools/decky_catalog.ts [--branch stable|publicbeta] [--bundle-dir DIR] [--decky-ui-webpack PATH] [--decky-ui-esm PATH] [--chrome PATH] [--out FILE]
+ *   bun tools/decky_catalog.ts --serve [--port N] [--branch …] [--bundle-dir DIR] [--decky-ui-webpack PATH] [--decky-ui-esm PATH]
  *
  * The file contains Valve's CSS, icons and images, so it goes to docs/local/ (git-ignored) by default. Do not
  * publish it. Its previews are static snapshots drawn headless (see tools/runtime_probe.ts); text uses a fallback font.
@@ -15,7 +15,7 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { buildProbe, fetchBundle, GLOBALS, openSteamPage, STUB } from "./runtime_probe";
+import { BOOT, buildProbe, fetchBundle, isViteHtml, openSteamPage, STUB } from "./runtime_probe";
 import extrasData from "../packages/decky-extras/extras.json";
 import { matchExtras } from "../packages/decky-extras/match";
 
@@ -147,7 +147,7 @@ export function selectorUsesClass(selector: string, used: Set<string>): boolean 
 
 /** What pageSetup gives the in-page renderers. Members are Steam or @decky/ui objects, so they stay untyped. */
 interface PageContext {
-  W: any; L: any; R: any; D: any;
+  W: any; C: PageContext["W"]; L: any; R: any; D: any;
   src(v: unknown): string;
   where: Map<unknown, string[]>;
   createRoot(el: Element): any;
@@ -166,18 +166,16 @@ interface PageContext {
  * S(name, initial, (value, set) => element) for a component that keeps its own state, and on(name) for a callback.
  * S and on report to window.__catalogLog(name, args) when it exists.
  */
-async function pageSetup(globals: string, candidates: Candidate[], matcher: typeof matchExtras, manifest: typeof extrasData): Promise<PageContext> {
+async function pageSetup(boot: string, candidates: Candidate[], matcher: typeof matchExtras, manifest: typeof extrasData): Promise<PageContext> {
   const w = window as any;
   w.__stubInert = true;
-  const webpackUrl = "/probe/webpack.js", libUrl = "/probe/index.js";
-  const W = await import(webpackUrl);
-  eval(globals);
-  const L = await import(libUrl);
+  const { W, C } = await eval(`(async () => { ${boot}; return { W, C }; })()`);
+  const L = await import("/probe/index.js");
   const R = w.SP_REACT, D = w.SP_REACTDOM;
   const src = (v: any) => { const f = v?.render ?? v?.type ?? v; try { return typeof f === "function" ? Function.prototype.toString.call(f) : ""; } catch { return ""; } };
   // Every distinct export, with all module:key places it is exported from.
   const where = new Map<any, string[]>();
-  for (const [id, m] of W.modules) {
+  for (const [id, m] of W.scan) {
     if (!m || (typeof m !== "object" && typeof m !== "function")) continue;
     for (const k of Object.keys(m)) {
       let v; try { v = m[k]; } catch { continue; }
@@ -187,8 +185,8 @@ async function pageSetup(globals: string, candidates: Candidate[], matcher: type
   const findAll = (test: (s: string) => boolean) => [...where.keys()].filter((v) => { const s = src(v); return s !== "" && test(s); });
   const one = (test: (s: string) => boolean) => { const all = findAll(test); return all.length === 1 ? all[0] : undefined; };
   const createRoot = W.findModule((m: any) => typeof m?.createRoot === "function" && Object.keys(m).length === 1)?.createRoot;
-  const provider = Object.values(W.CommonUIModule ?? {}).find((v) => typeof v === "function" && /SliderField:/.test(src(v)) && /\.Provider/.test(src(v)));
-  const Router = Object.values(L.ReactRouter ?? {}).find((v) => /history\.location/.test(src(v)) && /_isMounted/.test(src(v)));
+  const provider = Object.values(C.CommonUIModule ?? {}).find((v) => typeof v === "function" && /SliderField:/.test(src(v)) && /\.Provider/.test(src(v)));
+  const Router = Object.values(C.ReactRouter ?? {}).find((v) => /history\.location/.test(src(v)) && /_isMounted/.test(src(v)));
   const memoryHistory = one((s) => s.includes("initialEntries") && s.includes("getUserConfirmation"));
   const QueryProvider = one((s) => s.length < 600 && s.includes("client:") && s.includes(".mount()"));
   const QueryClient = one((s) => s.startsWith("class") && s.includes("getQueryCache(){"));
@@ -209,22 +207,22 @@ async function pageSetup(globals: string, candidates: Candidate[], matcher: type
     render() { return this.state.e ? h("pre", { "data-error": "" }, String((this.state.e as Error)?.message ?? this.state.e)) : (this as any).props.children; }
   }
   const K: Record<string, unknown> = {}, matches: Record<string, string[]> = {};
-  const found = matcher(W.modules, manifest);
+  const found = matcher(W.scan, manifest);
   for (const c of candidates) {
     const all = found[c.id] ?? [];
     if (all.length === 1) K[c.id] = all[0];
     matches[c.name] = all.map((v) => (where.get(v) ?? []).join(" = "));
   }
   return {
-    W, L, R, D, src, where, createRoot, K, matches,
+    W, C, L, R, D, src, where, createRoot, K, matches,
     wrap: (el) => h(Boundary, null, provider ? h(provider, null, el) : el),
     run: (make, C) => () => new Function("h", "L", "K", "C", "withRouter", "withQuery", "S", "on", `return ${make}`)(h, L, K, C, withRouter, withQuery, S, on),
   };
 }
 
 /** Runs inside the Steam page: draws every entry, candidate and icon once and returns static HTML and the CSS it uses. */
-async function pageCatalog(setup: typeof pageSetup, globals: string, entries: Entry[], candidates: Candidate[], selectorUses: string, matcher: typeof matchExtras, manifest: typeof extrasData): Promise<PageResult> {
-  const { W, L, R, D, src, where, createRoot, K, matches, wrap, run } = await setup(globals, candidates, matcher, manifest);
+async function pageCatalog(setup: typeof pageSetup, boot: string, entries: Entry[], candidates: Candidate[], selectorUses: string, matcher: typeof matchExtras, manifest: typeof extrasData): Promise<PageResult> {
+  const { W, C, L, R, D, src, where, createRoot, K, matches, wrap, run } = await setup(boot, candidates, matcher, manifest);
   const uses = eval(`(${selectorUses})`) as (s: string, u: Set<string>) => boolean;
   const draw = async (make: () => unknown, width: number): Promise<Rendered> => {
     const host = document.createElement("div");
@@ -242,7 +240,7 @@ async function pageCatalog(setup: typeof pageSetup, globals: string, entries: En
     const caught = html.match(/<pre data-error="">([\s\S]*?)<\/pre>/)?.[1];
     return { html, height, error: error ?? (caught === undefined ? null : caught.slice(0, 300)) };
   };
-  const out: PageResult = { modules: W.modules.size, entries: {}, candidates: {}, icons: [], css: "", classMaps: [], enums: [], functions: [], routerMethods: [], navigation: [] };
+  const out: PageResult = { modules: W.scan.size, entries: {}, candidates: {}, icons: [], css: "", classMaps: [], enums: [], functions: [], routerMethods: [], navigation: [] };
   for (const e of entries) {
     const r = e.skip ? { html: "", height: 0, error: null } : await draw(run(e.make), e.width ?? 360);
     out.entries[e.name] = { ...r, where: where.get(L[e.name]) ?? [] };
@@ -253,7 +251,7 @@ async function pageCatalog(setup: typeof pageSetup, globals: string, entries: En
     if (c.make && K[c.id]) Object.assign(out.candidates[c.name], await draw(run(c.make, K[c.id]), c.width ?? 360));
   }
   // Icons: one drawing each; directional icons once per direction.
-  const icons = L.IconsModule ?? {};
+  const icons = C.IconsModule ?? {};
   for (const name of Object.keys(icons).sort((a, b) => a.localeCompare(b))) {
     const directional = /direction:[\w$]+/.test(src(icons[name])) && /case"up"/.test(src(icons[name]));
     for (const direction of directional ? ["up", "down", "left", "right"] : [undefined]) {
@@ -316,8 +314,8 @@ const LAYOUT_CSS = `
 .cat-log div{white-space:pre-wrap;word-break:break-word}`;
 
 /** Runs in the --serve page: renders every entry, candidate and icon live, with an event log. */
-async function pageLive(setup: typeof pageSetup, globals: string, entries: Entry[], candidates: Candidate[], meta: { label: string; ui: string }, matcher: typeof matchExtras, manifest: typeof extrasData) {
-  const { L, R, createRoot, K, matches, wrap, run } = await setup(globals, candidates, matcher, manifest);
+async function pageLive(setup: typeof pageSetup, boot: string, entries: Entry[], candidates: Candidate[], meta: { label: string; ui: string }, matcher: typeof matchExtras, manifest: typeof extrasData) {
+  const { C, L, R, createRoot, K, matches, wrap, run } = await setup(boot, candidates, matcher, manifest);
   const h = R.createElement;
   const el = (tag: string, attrs: Record<string, string>, ...kids: (Node | string)[]) => {
     const e = document.createElement(tag);
@@ -363,7 +361,7 @@ async function pageLive(setup: typeof pageSetup, globals: string, entries: Entry
     cgrid.append(card(c.name, [c.why, `Finder: ${JSON.stringify(c.find)}`], body));
   }
   app.append(el("h2", {}, "Steam components not in @decky/ui"), cgrid);
-  const icons = L.IconsModule ?? {};
+  const icons = C.IconsModule ?? {};
   const iconGrid = el("div", { class: "cat-icons" });
   createRoot(iconGrid).render(Object.keys(icons).sort((a, b) => a.localeCompare(b)).map((name) =>
     h("figure", { key: name, className: "cat-icon" }, wrap(h(icons[name], { direction: "up" })), h("figcaption", null, name))));
@@ -436,8 +434,8 @@ document.getElementById("cat-filter").addEventListener("input", (e) => { const q
 }
 
 /** Serve the bundle with a live catalog page at /: Steam's page plus the stand-in, then pageLive once Steam has booted. */
-function serveLive(root: string, port: number, label: string, ui: string) {
-  const live = `(${pageLive})((${pageSetup}), ${JSON.stringify(GLOBALS)}, ${JSON.stringify(ENTRIES)}, ${JSON.stringify(CANDIDATES)}, ${JSON.stringify({ label, ui })}, (${matchExtras.toString()}), ${JSON.stringify(extrasData)})`;
+function serveLive(root: string, port: number, label: string, ui: string, boot: string) {
+  const live = `(${pageLive})((${pageSetup}), ${JSON.stringify(boot)}, ${JSON.stringify(ENTRIES)}, ${JSON.stringify(CANDIDATES)}, ${JSON.stringify({ label, ui })}, (${matchExtras.toString()}), ${JSON.stringify(extrasData)})`;
   // Steam renders into #root once its chunks have loaded; @decky/ui must import after that.
   const script = `const t0 = Date.now();
 while (!document.getElementById("root")?.childElementCount && Date.now() - t0 < 30000) await new Promise((r) => setTimeout(r, 250));
@@ -461,7 +459,8 @@ if (import.meta.main) {
   const { values: args } = parseArgs({ args: Bun.argv.slice(2), options: {
     branch: { type: "string", default: "stable" },
     "bundle-dir": { type: "string" },
-    "decky-ui": { type: "string", default: resolve(repo, "../decky-loader/frontend/node_modules/@decky/ui") },
+    "decky-ui-webpack": { type: "string", default: resolve(repo, "../decky-loader/frontend/node_modules/@decky/ui-legacy") },
+    "decky-ui-esm": { type: "string", default: resolve(repo, "../decky-loader/frontend/node_modules/@decky/ui-v5") },
     chrome: { type: "string", default: process.env.CHROME ?? "google-chrome" },
     out: { type: "string" },
     serve: { type: "boolean", default: false },
@@ -476,10 +475,13 @@ if (import.meta.main) {
     const bundle = args["bundle-dir"]
       ? { label: "local", root: resolve(args["bundle-dir"]), report: "local" }
       : await fetchBundle(args.branch!, work);
-    await buildProbe(bundle.root, work, args["decky-ui"], ["index.js"]);
-    const ui = (await Bun.file(join(args["decky-ui"]!, "package.json")).json()).version;
+    const isVite = isViteHtml(await Bun.file(join(bundle.root, "index.html")).text());
+    const boot = BOOT(isVite);
+    const uiPackage = resolve(isVite ? args["decky-ui-esm"]! : args["decky-ui-webpack"]!);
+    await buildProbe(bundle.root, work, uiPackage, isVite, ["index.js"]);
+    const ui = (await Bun.file(join(uiPackage, "package.json")).json()).version;
     if (args.serve) {
-      const server = serveLive(bundle.root, Number(args.port), bundle.label, ui);
+      const server = serveLive(bundle.root, Number(args.port), bundle.label, ui, boot);
       console.log(`${bundle.label}: live catalog at http://127.0.0.1:${server.port}/ (Chrome or Chromium). Ctrl-C stops it.`);
       const stop = async () => { server.stop(true); await cleanup(); process.exit(0); };
       process.on("SIGINT", stop);
@@ -489,7 +491,7 @@ if (import.meta.main) {
     const steam = await openSteamPage(bundle.root, work, args.chrome);
     let result: PageResult;
     try {
-      result = await steam.evaluate<PageResult>(`(${pageCatalog})((${pageSetup}), ${JSON.stringify(GLOBALS)}, ${JSON.stringify(ENTRIES)}, ${JSON.stringify(CANDIDATES)}, ${JSON.stringify(selectorUsesClass.toString())}, (${matchExtras.toString()}), ${JSON.stringify(extrasData)})`);
+      result = await steam.evaluate<PageResult>(`(${pageCatalog})((${pageSetup}), ${JSON.stringify(boot)}, ${JSON.stringify(ENTRIES)}, ${JSON.stringify(CANDIDATES)}, ${JSON.stringify(selectorUsesClass.toString())}, (${matchExtras.toString()}), ${JSON.stringify(extrasData)})`);
     } finally {
       await steam.close();
     }

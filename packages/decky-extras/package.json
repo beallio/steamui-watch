@@ -1,6 +1,6 @@
 {
   "name": "@beallio/decky-extras",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Steam UI components unavailable from the public @decky/ui API, discovered from validated finder data.",
   "main": "index.js",
   "module": "index.js",
@@ -8,7 +8,7 @@
   "types": "index.d.ts",
   "files": ["index.js", "index.d.ts", "README.md"],
   "peerDependencies": {
-    "@decky/ui": "^4.15.1",
+    "@decky/ui": "^4.15.1 || ^5.0.0",
     "react": ">=16.8"
   }
 }

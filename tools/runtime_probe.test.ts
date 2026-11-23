@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
-import { buildRegistrationFooter, cdp, extractTopLevelMutableNames, fingerprint, isExtraPassing, isViteHtml } from "./runtime_probe";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { cdp, fingerprint, isExtraPassing, isViteHtml } from "./runtime_probe";
 
 type Socket = Bun.ServerWebSocket<undefined>;
 
@@ -63,25 +65,34 @@ test("fingerprint keeps string literals and long property names, not names insid
   });
 });
 
-test("Vite HTML detection and top-level mutable ESM binding extraction", () => {
+test("ES-module client detection matches decky-loader's script[type=module][src*=library.js]", () => {
   expect(isViteHtml('<script type="module" src="/library.js?contenthash=CVZWwsCP"></script>')).toBe(true);
+  expect(isViteHtml('<script crossorigin src="/library.js" type="module"></script>')).toBe(true);
   expect(isViteHtml('<script defer="defer" src="/library.js"></script>')).toBe(false);
-
-  const esm = `
-    const __vite__mapDeps = (i) => i;
-    var a = 1, { b, c: d = 2 } = obj, [e, ...f] = arr;
-    let g = 3;
-    function Foo() { var inner = 4; }
-    export function Bar() {}
-    var toString = 5;
-  `;
-  expect(extractTopLevelMutableNames(esm)).toEqual(["a", "b", "d", "e", "f", "g", "Foo", "Bar"]);
-  expect(extractTopLevelMutableNames("(self.webpackChunksteamui||[]).push([]);")).toEqual([]);
-  expect(buildRegistrationFooter("chunk~1.js", ["a", "Foo"])).toBe(
-    '\n;(globalThis.__DECKY_ESM_REG__?.("chunk~1.js",{get a(){return a},set a(v){a=v},get Foo(){return Foo},set Foo(v){Foo=v}}));\n',
-  );
+  expect(isViteHtml('<script type="module" src="/other.js"></script><script src="/library.js"></script>')).toBe(false);
   expect(isExtraPassing("CalloutMessage", 0, true)).toBe(true);
   expect(isExtraPassing("CalloutMessage", 0, false)).toBe(false);
   expect(isExtraPassing("CalloutMessage", 2, true)).toBe(false);
   expect(isExtraPassing("ToggleRow", 0, true)).toBe(false);
+});
+
+test("a missing @decky/ui package fails before any bundle is checked; an empty path skips its format", async () => {
+  const tmp = await mkdtemp(join(process.env.TMPDIR || "/var/tmp/omp-1000", "probe-test-"));
+  try {
+    await Bun.write(join(tmp, "ui/package.json"), "{}");
+    // A bundle without Webpack or module scripts: the probe would boot it as a Webpack client.
+    await Bun.write(join(tmp, "bundle/index.html"), "<html></html>");
+    const run = (webpack: string, esm: string) => Bun.spawnSync(["bun", join(import.meta.dir, "runtime_probe.ts"),
+      "--bundle-dir", join(tmp, "bundle"), "--decky-ui-webpack", webpack, "--decky-ui-esm", esm], { env: { ...process.env, TMPDIR: tmp } });
+    for (const [webpack, esm] of [[join(tmp, "lost"), join(tmp, "ui")], [join(tmp, "ui"), join(tmp, "lost")]]) {
+      const result = run(webpack, esm);
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr.toString()).toContain(`no @decky/ui package at ${join(tmp, "lost")}`);
+    }
+    const skipped = run("", join(tmp, "ui"));
+    expect(skipped.exitCode).toBe(0);
+    expect(skipped.stdout.toString()).toContain("skipped, no @decky/ui package for Webpack clients");
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
 });

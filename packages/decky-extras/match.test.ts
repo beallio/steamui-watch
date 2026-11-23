@@ -1,5 +1,12 @@
 import { expect, test } from "bun:test";
 import { matchExtras, parseManifest } from "./match";
+import bundled from "./extras.json";
+
+test("bundled finders match backtick-source Steam components", () => {
+  const component = new Function("return `RadioButton`");
+  const matches = matchExtras([["module", { component }]], parseManifest(bundled));
+  expect(matches.RadioButton).toEqual([component]);
+});
 
 test("executable-style finder atoms are rejected", () => {
   expect(() => parseManifest({
