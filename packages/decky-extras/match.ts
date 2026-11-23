@@ -89,8 +89,11 @@ export function projectV1(manifest: Manifest, previous: ManifestV1 | null): Mani
 /** All matches, deduplicated by identity. Self-contained so the probe can run the same function in Steam's page. */
 export function matchExtras(modules: Iterable<readonly [unknown, unknown]>, manifest: Manifest): Record<string, unknown[]> {
   const values = new Set<any>();
+  // A Webpack module's exports object can itself be the target (Steam's icon registry on Stable): only `object` entries see these.
+  const moduleObjects = new Set<any>();
   for (const [, module] of modules) {
     if (!module || (typeof module !== "object" && typeof module !== "function")) continue;
+    if (typeof module === "object") moduleObjects.add(module);
     for (const key of Object.keys(module)) {
       try {
         const value = (module as any)[key];
@@ -165,10 +168,11 @@ export function matchExtras(modules: Iterable<readonly [unknown, unknown]>, mani
     }
     return false;
   };
+  const objects = [...values, ...[...moduleObjects].filter((m) => !values.has(m))];
   const matches: Record<string, unknown[]> = {};
   for (const [name, { kind, find }] of Object.entries(manifest.extras)) {
     matches[name] = [];
-    for (const v of values) {
+    for (const v of kind === "object" ? objects : values) {
       if (candidate(v, kind) && find.every((clause) => clause.some((atom) => hits(v, kind, atom)))) matches[name].push(v);
     }
   }

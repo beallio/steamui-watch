@@ -62,6 +62,21 @@ test("objects match inherited property names without running getters", () => {
   expect(matchExtras([["m", { store, lookalike, Store }]], manifest).Target).toEqual([store]);
 });
 
+test("object entries also match whole modules, which can make an entry ambiguous", () => {
+  const Clock = () => null, Spinner = () => null;
+  const registry = { ABXYButton: Clock, Spinner, Settings: Clock }; // a Webpack module whose exports are the icons
+  const icons = parseManifest(one("object", [[{ key: "ABXYButton" }], [{ key: "Spinner" }], [{ key: "Settings" }]]));
+  expect(matchExtras([["icons", registry], ["other", { registry: { x: 1 } }]], icons).Target).toEqual([registry]);
+  // Components and functions never see module objects.
+  expect(matchExtras([["m", { render: Clock }]], parseManifest(one("function", [[{ key: "render" }]]))).Target).toEqual([]);
+
+  const store = { m_history: {}, m_navigator: {} };
+  const byKeys = parseManifest(one("object", [[{ key: "m_history" }], [{ key: "m_navigator" }]]));
+  expect(matchExtras([["m", { store }]], byKeys).Target).toEqual([store]);
+  const lookalikeModule = { m_history: store.m_history, m_navigator: store.m_navigator };
+  expect(matchExtras([["m", { store }], ["n", lookalikeModule]], byKeys).Target).toEqual([store, lookalikeModule]);
+});
+
 test("functions match by source or prototype names, never objects with the same text", () => {
   class Toaster { Show() { return 1; } }
   const render = () => "notification";

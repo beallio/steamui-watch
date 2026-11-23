@@ -198,8 +198,10 @@ const PROBE = (files: string[], isVite: boolean, extrasOnly = false) => `(async 
   };
   // The same objects the package's index.ts searches: createScopeMapping, which the loader's Webpack boot maps to modules.
   const matchExtras = ${matchExtras};
+  // A structural match is not enough for these: it must be the object @decky/ui itself uses.
+  const identity = { SteamIcons: ["@decky/ui IconsModule", C?.IconsModule] };
   for (const [name, matches] of Object.entries(matchExtras(W.scan, manifest))) {
-    out.extras[name] = matches.length;
+    out.extras[name] = matches.length === 1 && identity[name] && matches[0] !== identity[name][1] ? "not " + identity[name][0] : matches.length;
     if (matches.length === 1) record("extras:" + name, matches[0]);
   }
   for (const k of ["SP_REACT", "SP_REACTDOM", "SP_JSX"]) out.boot[k] = !!window[k];

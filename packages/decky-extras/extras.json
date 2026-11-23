@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "revision": 6,
+  "revision": 7,
   "extras": {
     "RadioButton": {"kind":"component","title":"Radio button","description":"One option of a radio group.","find":[[{"text":"\"RadioButton\""},{"text":"`RadioButton`"}]]},
     "RadioGroup": {"kind":"component","title":"Radio group","description":"Single choice from a few options, drawn as a segmented control.","find":[[{"text":"\"Shared_Radio_Group\""},{"text":"`Shared_Radio_Group`"}]]},
@@ -37,6 +37,7 @@
     "SteamAvatar": {"kind":"component","title":"Steam avatar","description":"Native Steam user avatar frame with online/in-game status indicator.","find":[[{"text":"\"avatarHolder\""},{"text":"`avatarHolder`"}],[{"text":"\"avatarStatus\""},{"text":"`avatarStatus`"}],[{"text":"strAvatarURL:"}]]},
     "RouterHistoryStore": {"kind":"object","title":"Router history store","description":"Steam's routing store. m_history is set after Gaming Mode renders its router.","find":[[{"key":"m_history"}],[{"key":"m_navigator"}],[{"key":"m_locationPathname"}]]},
     "ValveToastRenderer": {"kind":"function","title":"Valve toast renderer","description":"Function component that draws a group of Steam notification toasts (props group and location). Decky Loader patches it to draw Decky toasts.","find":[[{"text":"controller:\"notification\",method:"},{"text":"controller:`notification`,method:"}]]},
-    "VRDashboardBarSmallButton": {"kind":"component","title":"VR dashboard bar button","description":"Small button of the SteamVR dashboard bar.","find":[[{"text":"VRDashboardBarSmallButtonActive"}]]}
+    "VRDashboardBarSmallButton": {"kind":"component","title":"VR dashboard bar button","description":"Small button of the SteamVR dashboard bar.","find":[[{"text":"VRDashboardBarSmallButtonActive"}]]},
+    "SteamIcons": {"kind":"object","title":"Steam icons","description":"Steam's icon registry: one icon component per readable name, such as Clock, Settings or User.","find":[[{"key":"ABXYButton"}],[{"key":"Spinner"}],[{"key":"Settings"}]]}
   }
 }
