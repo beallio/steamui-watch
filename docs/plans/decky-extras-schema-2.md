@@ -109,7 +109,7 @@ findSteamValue("RouterHistoryStore")      // function or object; null if missing
 
 - `tools/runtime_probe.ts` already runs `matchExtras` in Steam's page for each branch. It reports every kind the same way: 1 match is good, 0 or 2+ fails. `VITE_OPTIONAL_EXTRAS` stays for `CalloutMessage` (see "Decisions").
 - `props_report.ts` stays on components. For `object` and `function`, a later change can record key names (names only, no values) and report changes in the same way.
-- `publish-mappings.yml` validates both files with the new `parseManifest` (v2) and the old one, kept as `parseManifestV1` for the copy; `packages/decky-extras/feed.ts` writes both. It publishes both files, or keeps the last good pair. If no v2 file was published yet, the fallback leaves it out with a warning.
+- `publish-mappings.yml` validates both files with the new `parseManifest` (v2) and the old one, kept as `parseManifestV1` for the copy; `packages/decky-extras/feed.ts` writes both. It publishes both files, or keeps the last good pair. Only a 404 for the v2 file (not published yet) lets the fallback leave it out; a timeout, another HTTP error or invalid data stops deployment.
 - `tools/dev_guide.ts` already records every unique extra; `dev_guide_docs.ts` now describes all kinds.
 
 ## First entries

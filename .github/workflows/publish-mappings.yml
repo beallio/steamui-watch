@@ -115,13 +115,17 @@ jobs:
             https://beallio.github.io/steamui-watch/decky-extras.json --output "$dir/previous-extras.json"
           bun -e 'import { parseManifestV1 } from "./packages/decky-extras/match"; parseManifestV1(await Bun.file(Bun.argv.at(-1)).json());' "$dir/previous-extras.json"
           cp "$dir/previous-extras.json" "$dir/site/decky-extras.json"
-          if curl --fail --location --silent --show-error --max-time 30 \
-              https://beallio.github.io/steamui-watch/decky-extras-v2.json --output "$dir/previous-extras-v2.json" \
-            && bun -e 'import { parseManifest } from "./packages/decky-extras/match"; parseManifest(await Bun.file(Bun.argv.at(-1)).json());' "$dir/previous-extras-v2.json"; then
-            cp "$dir/previous-extras-v2.json" "$dir/site/decky-extras-v2.json"
-          else
-            echo "::warning::No valid published decky-extras-v2.json to keep; 0.4.0+ plugins use their bundled definitions."
-          fi
+          # Only a confirmed 404 (nothing published yet) may drop v2; any other failure stops deployment,
+          # so the published pair stays live.
+          code=$(curl --location --silent --show-error --max-time 30 --write-out '%{http_code}' \
+            https://beallio.github.io/steamui-watch/decky-extras-v2.json --output "$dir/previous-extras-v2.json")
+          case "$code" in
+            200)
+              bun -e 'import { parseManifest } from "./packages/decky-extras/match"; parseManifest(await Bun.file(Bun.argv.at(-1)).json());' "$dir/previous-extras-v2.json"
+              cp "$dir/previous-extras-v2.json" "$dir/site/decky-extras-v2.json" ;;
+            404) echo "::warning::No decky-extras-v2.json is published yet; 0.4.0+ plugins use their bundled definitions." ;;
+            *) echo "::error::Could not retrieve the published decky-extras-v2.json (HTTP $code)." >&2; exit 1 ;;
+          esac
           echo "::warning::Extras validation failed. Publishing fresh CSS mappings with the previous extras definitions; skipping the extras release."
       - name: Generate and stage developer guide
         id: guide
