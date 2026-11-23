@@ -24,7 +24,6 @@ on:
 
 permissions:
   contents: write
-  actions: read
   pages: write
   id-token: write
   issues: write
@@ -38,7 +37,7 @@ jobs:
     runs-on: ubuntu-24.04
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment-retry.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.0
@@ -202,21 +201,19 @@ jobs:
         with:
           path: ${{ runner.temp }}/steamui-watch/site
           name: github-pages-${{ github.run_attempt }}
-      - name: Wait for the Pages artifact to be listed
-        # deploy-pages lists the run's artifacts once; on 2026-11-23 that list was still empty 0.3 s after the upload.
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ARTIFACT: github-pages-${{ github.run_attempt }}
-        run: |
-          for _ in $(seq 30); do
-            listed=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
-              --jq "any(.artifacts[]; .name == \"$ARTIFACT\")") || listed=false
-            [ "$listed" = true ] && exit 0
-            sleep 2
-          done
-          echo "::warning::The $ARTIFACT artifact is not listed after 60 seconds; deploying anyway."
+      # deploy-pages looks up the artifact once. On 2026-11-23 that lookup found nothing in 4 of 8 runs although the
+      # upload had finished (the REST artifact list already showed it), so wait and try once more.
       - uses: actions/deploy-pages@v5
         id: deployment
+        continue-on-error: true
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
+      - name: Wait before the second deployment attempt
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 60
+      - uses: actions/deploy-pages@v5
+        id: deployment-retry
+        if: steps.deployment.outcome == 'failure'
         with:
           artifact_name: github-pages-${{ github.run_attempt }}
       - name: Publish the Decky extras package
@@ -238,7 +235,7 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-          DEPLOYMENT: ${{ steps.deployment.outcome }}
+          DEPLOYMENT: ${{ steps.deployment-retry.outcome == 'success' && 'success' || steps.deployment.outcome }}
         run: |
           mappings="$RUNNER_TEMP/steamui-watch/mappings"
           [ -d "$mappings/.git" ] || exit 0
