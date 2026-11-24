@@ -127,6 +127,8 @@ export interface IconEntry {
   viteAt: string[];
   webpackAt: string[];
   directional: boolean;
+  /** Steam branches whose current icon registry has this name (from decky-icons.json); absent when that list was not given. */
+  branches?: Array<"stable" | "beta">;
   recipe: string;
   /** Local --with-previews only (never included in public Pages output). */
   previewSvg?: string;
@@ -269,6 +271,9 @@ export function validatePublicGuideData(data: GuideData, opts: { allowPreviews?:
   }
   for (const icon of data.icons) {
     checkStr(`icon[${icon.name}].recipe`, icon.recipe);
+    if (icon.branches && (!icon.branches.length || icon.branches.some((b) => b !== "stable" && b !== "beta"))) {
+      errors.push(`icon[${icon.name}].branches must list stable and/or beta`);
+    }
     if (!opts.allowPreviews && icon.previewSvg) {
       errors.push(`icon[${icon.name}].previewSvg is only allowed in local --with-previews mode`);
     }

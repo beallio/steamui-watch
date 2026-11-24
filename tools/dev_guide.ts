@@ -23,6 +23,7 @@ import {
   buildCssIndex,
   buildGuideData,
   extractCssClassesFromStylesheets,
+  iconRows,
   isViteHash,
   matchWebpackToVite,
   type CapturedPreviews,
@@ -38,6 +39,7 @@ import {
   type IconEntry,
   type SourcePackage,
 } from "./dev_guide_schema";
+import { validatePublishedIcons } from "./icons_report";
 import { BOOT, buildProbe, fetchBundle, fingerprint, isViteHtml, openSteamPage } from "./runtime_probe";
 
 const repo = resolve(import.meta.dir, "..");
@@ -621,6 +623,7 @@ async function main() {
       "webpack-bundle-dir": { type: "string" },
       "webpack-version": { type: "string" },
       "webpack-baseline": { type: "string" },
+      "icon-names": { type: "string" },
       "save-webpack-baseline": { type: "string" },
       "decky-ui-webpack": { type: "string", default: resolve(repo, "../decky-loader/frontend/node_modules/@decky/ui-legacy") },
       "decky-ui-esm": { type: "string", default: resolve(repo, "../decky-loader/frontend/node_modules/@decky/ui-v5") },
@@ -765,12 +768,11 @@ async function main() {
       };
     }
 
-    const icons: Omit<IconEntry, "recipe">[] = betaProbe.data.icons.map((ic) => ({
-      name: ic.name,
-      viteAt: ic.at,
-      webpackAt: webpackBaseline.iconsAt[ic.name] ?? [],
-      directional: ic.directional,
-    }));
+    // Branch availability comes from the published name lists (decky-icons.json), when the caller has them.
+    const iconFeed = values["icon-names"]
+      ? validatePublishedIcons(await Bun.file(resolve(values["icon-names"])).json(), values["icon-names"])
+      : undefined;
+    const icons = iconRows(betaProbe.data.icons, webpackBaseline.iconsAt, iconFeed);
 
     // 6. Assemble & validate public GuideData
     const guideData = buildGuideData({

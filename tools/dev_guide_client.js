@@ -165,6 +165,7 @@
       });
     }
 
+    const branchLabel = (ic) => !ic.branches ? "" : ic.branches.length === 2 ? "Stable and Beta" : ic.branches[0] === "beta" ? "Beta only" : "Stable only";
     for (const ic of data.icons) {
       addRow({
         key: "icon:" + ic.name,
@@ -172,13 +173,13 @@
         tab: "icons",
         kindLabel: "icon",
         name: ic.name,
-        sub: "IconsModule" + (ic.directional ? " · directional" : ""),
+        sub: ["IconsModule", ic.directional ? "directional" : "", branchLabel(ic)].filter(Boolean).join(" · "),
         code: ic.viteAt[0] || "IconsModule." + ic.name,
         meta: ic.webpackAt[0] ? "WP: " + ic.webpackAt[0] : "",
         area: "CommonUI",
         conf: "verified",
         mig: ic.webpackAt.length ? "changed" : "new",
-        search: ["icon", "iconsmodule", ic.name, ...ic.viteAt, ...ic.webpackAt].join(" ").toLowerCase(),
+        search: ["icon", "iconsmodule", "steamicon", ic.name, branchLabel(ic), ...ic.viteAt, ...ic.webpackAt].join(" ").toLowerCase(),
         item: ic,
         type: "icon",
       });
@@ -277,7 +278,7 @@
         return matchesTerms(("icon iconsmodule " + ic.name + " " + ic.viteAt.join(" ")).toLowerCase(), terms);
       });
       title.textContent = `Showing ${icons.length.toLocaleString()} of ${state.data.icons.length.toLocaleString()} IconsModule SVG icons`;
-      note.textContent = "Click any icon to copy its <IconsModule.Name /> usage & inspect Vite/Webpack locations";
+      note.textContent = "Click any icon to copy its <SteamIcon name=\"…\" /> usage & inspect Vite/Webpack locations";
       if (!icons.length) {
         body.innerHTML = `<div class="empty-state">No icons match "${esc(state.query)}".</div>`;
         return;
@@ -570,7 +571,7 @@
       body = `
         <div class="drawer-head">
           <div>
-            <h2 class="drawer-title">IconsModule.${esc(it.name)}</h2>
+            <h2 class="drawer-title">${esc(it.name)}</h2>
             <div style="margin-top:6px;display:flex;gap:6px"><span class="badge b-kind">icon</span><span class="badge b-verified">verified</span></div>
           </div>
           <button class="drawer-close" id="close-drawer">Close</button>
@@ -580,6 +581,7 @@
           <h3>Details</h3>
           <div class="kv-grid">
             <div class="kv-k">Directional</div><div class="kv-v">${it.directional ? "Yes (accepts direction prop: up/down/left/right)" : "No"}</div>
+            ${it.branches ? `<div class="kv-k">Steam branches</div><div class="kv-v">${it.branches.length === 2 ? "Stable and Beta" : it.branches[0] === "beta" ? "Beta only" : "Stable only"}</div>` : ""}
             <div class="kv-k">Vite ESM</div><div class="kv-v mono">${it.viteAt.map(esc).join("<br>")}</div>
             <div class="kv-k">Webpack Bridge</div><div class="kv-v mono">${it.webpackAt.map(esc).join("<br>") || "None"}</div>
           </div>

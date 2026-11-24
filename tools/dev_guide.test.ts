@@ -12,6 +12,7 @@ import {
   buildCssIndex,
   buildGuideData,
   extractCssClassesFromStylesheets,
+  iconRows,
   inferExportSemantics,
   matchWebpackToVite,
   type ViteRuntimeExport,
@@ -22,6 +23,22 @@ import { inlineLocalPreviewAssets, isViteDump, loadMappingDataFiles, scopePrevie
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+test("icon rows add Stable-only names and each name's branches from decky-icons.json", () => {
+  const beta = [{ name: "Clock", at: ["esm:c:Clock"], directional: false }, { name: "NewThing", at: ["esm:c:N"], directional: false }];
+  const feed = {
+    stable: { names: ["Arrow", "Clock"], directional: ["Arrow"] },
+    beta: { names: ["Clock", "NewThing"], directional: [] },
+  };
+  const rows = iconRows(beta, { Clock: ["9:Clock"] }, feed);
+  expect(rows).toEqual([
+    { name: "Clock", viteAt: ["esm:c:Clock"], webpackAt: ["9:Clock"], directional: false, branches: ["stable", "beta"] },
+    { name: "NewThing", viteAt: ["esm:c:N"], webpackAt: [], directional: false, branches: ["beta"] },
+    { name: "Arrow", viteAt: [], webpackAt: [], directional: true, branches: ["stable"] },
+  ]);
+  // Without the published lists the guide keeps the beta registry and claims no branches.
+  expect(iconRows(beta, {}).every((row) => !("branches" in row))).toBe(true);
+});
 
 describe("dev_guide_schema", () => {
   test("exports Valve Steam Deck / SteamUI palette tokens", () => {

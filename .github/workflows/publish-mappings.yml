@@ -158,6 +158,8 @@ jobs:
               baseline_args=(--save-webpack-baseline "$baseline_file")
             fi
           fi
+          # Icon branch labels come from the staged decky-icons.json (fresh, or retained after an extras failure).
+          if [ -f "$TMPDIR/site/decky-icons.json" ]; then baseline_args+=(--icon-names "$TMPDIR/site/decky-icons.json"); fi
           guide_out="$TMPDIR/guide-out"
           rm -rf "$guide_out"
           # Public Pages build: strict metadata only (never pass --with-previews).

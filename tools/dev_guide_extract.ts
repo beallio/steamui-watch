@@ -1118,6 +1118,28 @@ export interface CapturedPreviews {
   css: string;
 }
 
+/**
+ * Icon rows: the beta probe's registry, plus Stable-only names and each name's branches when the published
+ * decky-icons.json name lists are given.
+ */
+export function iconRows(
+  betaIcons: { name: string; at: string[]; directional: boolean }[],
+  webpackIconsAt: Record<string, string[]>,
+  feed?: Record<"stable" | "beta", { names: string[]; directional: string[] }>,
+): Omit<IconEntry, "recipe">[] {
+  const rows = new Map<string, Omit<IconEntry, "recipe">>();
+  for (const ic of betaIcons) rows.set(ic.name, { name: ic.name, viteAt: ic.at, webpackAt: webpackIconsAt[ic.name] ?? [], directional: ic.directional });
+  if (!feed) return [...rows.values()];
+  for (const name of feed.stable.names) {
+    if (!rows.has(name)) rows.set(name, { name, viteAt: [], webpackAt: webpackIconsAt[name] ?? [], directional: feed.stable.directional.includes(name) });
+  }
+  const branches = (name: string) => (["stable", "beta"] as const).filter((branch) => feed[branch].names.includes(name));
+  return [...rows.values()].map((row) => {
+    const found = branches(row.name);
+    return found.length ? { ...row, branches: found } : row;
+  });
+}
+
 export function buildGuideData(inputs: {
   betaMeta: GuideData["beta"];
   webpackMeta: GuideData["webpackBaseline"];
@@ -1402,8 +1424,8 @@ export function buildGuideData(inputs: {
       return {
         ...ic,
         recipe: ic.directional
-          ? `import { IconsModule } from "@decky/ui"; // <IconsModule.${ic.name} direction="right" />`
-          : `import { IconsModule } from "@decky/ui"; // <IconsModule.${ic.name} />`,
+          ? `import { SteamIcon } from "@beallio/decky-extras"; // <SteamIcon name="${ic.name}" direction="right" />`
+          : `import { SteamIcon } from "@beallio/decky-extras"; // <SteamIcon name="${ic.name}" />`,
         ...(svg ? { previewSvg: svg } : {}),
       };
     })
