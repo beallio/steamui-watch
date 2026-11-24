@@ -30,6 +30,23 @@ export declare function findSteamIcon(name: string): React.ComponentType<Record<
 export declare function steamIconNames(): string[];
 export declare function SteamIcon(props: SteamIconProps): React.ReactElement | null;
 export declare function IconBrowser(props: IconBrowserProps): React.ReactElement;
+export type SortOption<T extends string = string> = { label: string; value: T };
+export type ListHeaderProps<T extends string = string> = {
+  label: React.ReactNode;
+  count?: number;
+  sortOptions?: readonly SortOption<T>[];
+  sort?: T;
+  /** NoInfer (TypeScript 5.4+): T comes from sortOptions and sort, so a useState setter fits. */
+  onSortChange?: (value: NoInfer<T>) => void;
+  descending?: boolean;
+  onDescendingChange?: (descending: boolean) => void;
+  ascendingLabel?: string;
+  descendingLabel?: string;
+};
+export declare function ListHeader<T extends string = string>(props: ListHeaderProps<T>): React.ReactElement;
+export type DetailItem = { icon?: string; text: React.ReactNode };
+export type DetailRowProps = { title: React.ReactNode; details?: readonly DetailItem[]; value?: React.ReactNode; actions?: React.ReactNode };
+export declare function DetailRow(props: DetailRowProps): React.ReactElement;
 `;
 
 await mkdir(outdir, { recursive: true });

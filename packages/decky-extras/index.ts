@@ -71,3 +71,5 @@ export function stopExtrasUpdates(): void {
 
 export { findSteamIcon, steamIconNames, SteamIcon, IconBrowser } from "./icons";
 export type { SteamIconProps, IconBrowserProps } from "./icons";
+export { DetailRow, ListHeader } from "./patterns";
+export type { DetailItem, DetailRowProps, ListHeaderProps, SortOption } from "./patterns";

@@ -106,6 +106,21 @@ function resolveIcon(name: string, props: Record<string, unknown>): IconComponen
   return canRenderIcon(name, props) ? findSteamIcon(name) : null;
 }
 
+/**
+ * Draws the icon inside a span that also sizes its <svg> directly: some Steam icons (for example SortByGeneric)
+ * set their own width and height and ignore those props.
+ */
+function iconElement(Icon: IconComponent, iconProps: Record<string, unknown>): React.ReactElement {
+  const css = (value: unknown) => typeof value === "number" ? `${value}px` : String(value);
+  const fit = (element: HTMLElement | null) => {
+    const svg = element?.querySelector("svg");
+    if (!svg) return;
+    svg.style.width = css(iconProps.width);
+    svg.style.height = css(iconProps.height);
+  };
+  return React.createElement("span", { ref: fit, style: { display: "inline-flex", lineHeight: 0 } }, React.createElement(Icon, iconProps));
+}
+
 export function SteamIcon(props: SteamIconProps): React.ReactElement | null {
   const { fallback: fallbackProp, name, size, ...passedProps } = props;
   const fallback = fallbackProp ?? null;
@@ -114,7 +129,7 @@ export function SteamIcon(props: SteamIconProps): React.ReactElement | null {
   return React.createElement(
     IconErrorBoundary,
     { key: props.name, fallback },
-    React.createElement(Icon, propsForSteamIcon(name, passedProps, size)),
+    iconElement(Icon, propsForSteamIcon(name, passedProps, size)),
   );
 }
 
@@ -190,7 +205,7 @@ export function IconBrowser({ onSelect }: IconBrowserProps): React.ReactElement 
         const found = canRenderIcon(cell.name, {}) ? lookupIcon(registry, cell.name) : null;
         const Icon = typeof found === "function" || (typeof found === "object" && found !== null) ? found as IconComponent : null;
         const icon = Icon
-          ? React.createElement(Icon, propsForSteamIcon(cell.name, cell.direction ? { direction: cell.direction } : {}, 24))
+          ? iconElement(Icon, propsForSteamIcon(cell.name, cell.direction ? { direction: cell.direction } : {}, 24))
           : fallback;
         const activate = () => {
           setSelectedSnippet(snippet);
@@ -202,8 +217,8 @@ export function IconBrowser({ onSelect }: IconBrowserProps): React.ReactElement 
           Focusable,
           {
             key: `${cell.name}:${cell.direction ?? ""}`,
+            // Focusable calls onActivate for the A button and for clicks; an onClick too would run it twice.
             onActivate: activate,
-            onClick: activate,
             style: { minHeight: 64, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 },
           },
           React.createElement(

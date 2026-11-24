@@ -14,7 +14,7 @@ Your plugin bundles the package. It works with the standard Decky Loader and off
 Start from a normal Decky plugin (for example the [decky-plugin-template](https://github.com/SteamDeckHomebrew/decky-plugin-template)) that builds with `@decky/rollup`. Then add the package:
 
 ```sh
-npm install https://github.com/beallio/steamui-watch/releases/download/decky-extras-v0.5.0/beallio-decky-extras-0.5.0.tgz
+npm install https://github.com/beallio/steamui-watch/releases/download/decky-extras-v0.6.0/beallio-decky-extras-0.6.0.tgz
 ```
 
 Do not change the Rollup setup. `@decky/rollup` already maps `react` to Steam's React and `@decky/ui` to the loader's library, and it bundles this package into your `dist/index.js`.
@@ -147,6 +147,37 @@ function GameOptions() {
 
 `listen` returns a function that stops listening; returning it from `useEffect` removes the listener when the panel closes. Steam can call the listener more than once for one page change.
 
+### A sortable list
+
+`ListHeader` and `DetailRow` build a list in the style of Steam's storage lists, for example saved games or downloads:
+
+```tsx
+import { useMemo, useState } from "react";
+import { DialogButton } from "@decky/ui";
+import { DetailRow, ListHeader, SteamIcon } from "@beallio/decky-extras";
+
+type Save = { name: string; author: string; date: string };
+
+function SaveList({ saves, restore }: { saves: Save[]; restore: (save: Save) => void }) {
+  const [sort, setSort] = useState<"date" | "name">("date");
+  const [descending, setDescending] = useState(true);
+  const sorted = useMemo(() => [...saves].sort((a, b) => (descending ? -1 : 1) * a[sort].localeCompare(b[sort])), [saves, sort, descending]);
+  return <>
+    <ListHeader label="Saves" count={saves.length}
+      sortOptions={[{ label: "Date", value: "date" }, { label: "Name", value: "name" }]}
+      sort={sort} onSortChange={setSort} descending={descending} onDescendingChange={setDescending} />
+    {sorted.map((save) => (
+      <DetailRow key={save.name} title={save.name}
+        details={[{ icon: "User", text: save.author }, { icon: "Clock", text: save.date }]}
+        value={sort === "date" ? save.date : save.name}
+        actions={<DialogButton onClick={() => restore(save)}><SteamIcon name="Download" size={18} /></DialogButton>} />
+    ))}
+  </>;
+}
+```
+
+Pressing A on the sort selector moves to the next option; the arrow button switches the direction.
+
 ### Fallbacks for missing controls
 
 A Steam update can remove or change a component. Use `findExtra` when you want your own fallback instead of an empty space:
@@ -200,3 +231,13 @@ On the same VM, a second test plugin with the package 0.5.0 build ran the icon A
 - A `SteamIcon` worked as the plugin's icon in the Decky plugin list.
 
 That test also did not cover Steam Stable, a physical Deck, or a visual check of the drawing.
+
+A third test plugin, with the package 0.6.0 build, checked the patterns in the Quick Access menu on the same VM:
+
+- `ListHeader` drew the label, count, rule, sort selector and direction button; its controls showed the focus ring under the D-pad.
+- The A button on the sort selector changed the sort from Date to Name, and on the direction button reversed the list order. A first build that opened Steam's context menu lost the choice: the menu opened in Steam's main window and the Quick Access menu unmounted the plugin. The selector now cycles instead.
+- `DetailRow` drew the title, the details line with `User` and `Clock` icons, the value column and two icon buttons. Moving down from the direction button reached the first row's right-hand button, and A ran its action.
+- `SortByGeneric` ignores its width props; `SteamIcon` now sizes the drawn `<svg>` directly, and it measured 16 px.
+- A click on an `IconBrowser` cell called `onSelect` once.
+
+That test did not cover Steam Stable, a physical Deck, or a visual check of the drawing.

@@ -9,7 +9,7 @@ New to the package? Read the [guide with examples of what to build](https://gith
 Install the immutable package tarball as a dependency (no npm login is required):
 
 ```sh
-npm install https://github.com/beallio/steamui-watch/releases/download/decky-extras-v0.5.0/beallio-decky-extras-0.5.0.tgz
+npm install https://github.com/beallio/steamui-watch/releases/download/decky-extras-v0.6.0/beallio-decky-extras-0.6.0.tgz
 ```
 
 Keep `react` and `@decky/ui` as the plugin's runtime peers. The standard Decky Rollup setup maps `react` to Steam's `SP_REACT` and `@decky/ui` to the installed Decky frontend library; bundle `@beallio/decky-extras` itself into the plugin. The supported minimum is official `@decky/ui` 4.15.1 (public `createModuleMapping`) and React 16.8 (hooks and `forwardRef`); `@decky/ui` 5.x also works. On Steam ES-module clients, the package uses `createScopeMapping` when available; official 4.x clients fall back to `createModuleMapping`. Finder text atoms support both quote styles used in Steam bundles. The package does not import a bundled copy of either peer.
@@ -69,7 +69,7 @@ The result is `unknown`: cast it to the shape your plugin needs and check it bef
 
 `findSteamIcon(name)` returns the Steam icon component or `null`. `steamIconNames()` returns the sorted names in the active registry.
 
-Use `SteamIcon` to render an icon. `size` sets the SVG width and height in pixels; without it the icon is `1em` square, so it follows the text size (most Steam icons have no size of their own and would fill their container). The wrapper passes other props to the Steam component. The icons come from the `SteamIcons` extra (`findSteamValue("SteamIcons")`), or from `@decky/ui`'s `IconsModule` if that extra is missing.
+Use `SteamIcon` to render an icon. `size` sets the icon's width and height in pixels; without it the icon is `1em` square, so it follows the text size (most Steam icons have no size of their own and would fill their container). Some Steam icons, such as `SortByGeneric`, fix their own size, so `SteamIcon` also sets the size on the drawn `<svg>` through a wrapping `<span>`. The wrapper passes other props to the Steam component. The icons come from the `SteamIcons` extra (`findSteamValue("SteamIcons")`), or from `@decky/ui`'s `IconsModule` if that extra is missing.
 
 ```tsx
 import { SteamIcon } from "@beallio/decky-extras";
@@ -84,6 +84,35 @@ Some names may be missing on a Steam build. A missing name warns once and render
 
 Icon names may be missing on a Steam build, and Stable glyphs may differ from Beta glyphs. The package does not contain Valve SVG paths, CSS, or images; icons render from the user's Steam client.
 
+### Patterns
+
+Patterns are small layouts built from the parts above and from public `@decky/ui` components. Their API belongs to this package and follows semver.
+
+`ListHeader` is a list header in the style of Steam's storage lists: a label and count, a rule, a sort selector, and a sort-direction button.
+
+```tsx
+import { ListHeader } from "@beallio/decky-extras";
+
+<ListHeader label="Saves" count={saves.length}
+  sortOptions={[{ label: "Date", value: "date" }, { label: "Name", value: "name" }]}
+  sort={sort} onSortChange={setSort} descending={descending} onDescendingChange={setDescending} />
+```
+
+Activating the sort selector moves to the next option. It does not open Steam's context menu: from the Quick Access menu that menu opens in Steam's main window, which hides the Quick Access menu and unmounts the plugin, so the choice would be lost with the component's state. The sort controls appear only when their props are given. `onSortChange` uses TypeScript's `NoInfer` (TypeScript 5.4 or newer), so a `useState` setter for a string union fits.
+
+`DetailRow` is a list row with a title, a details line, an optional value column and action buttons:
+
+```tsx
+import { DetailRow, SteamIcon } from "@beallio/decky-extras";
+import { DialogButton } from "@decky/ui";
+
+<DetailRow title={save.name}
+  details={[{ icon: "User", text: save.author }, { icon: "Clock", text: save.date }]}
+  value={save.date}
+  actions={<DialogButton onClick={() => restore(save)}><SteamIcon name="Download" size={18} /></DialogButton>} />
+```
+
+Each details item can name a Steam icon. The actions sit in one gamepad group: moving down from a column keeps the controller near the same horizontal position. Header controls show a white focus ring.
 
 ## Definitions and cache
 
