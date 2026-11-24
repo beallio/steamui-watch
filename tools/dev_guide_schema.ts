@@ -190,6 +190,8 @@ export interface GuideData {
   exports: JsExportEntry[];
   icons: IconEntry[];
   chunks: ChunkEntry[];
+  /** Stable client version of the icon name list behind `IconEntry.branches` (Beta membership is the live probe). */
+  iconStableVersion?: string;
   /** Local --with-previews only (scoped Valve CSS for rendered component/icon snapshots). */
   previewCss?: string;
 }

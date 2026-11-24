@@ -768,7 +768,7 @@ async function main() {
       };
     }
 
-    // Branch availability comes from the published name lists (decky-icons.json), when the caller has them.
+    // Stable availability comes from the published Stable name list (decky-icons.json); Beta is the live probe.
     const iconFeed = values["icon-names"]
       ? validatePublishedIcons(await Bun.file(resolve(values["icon-names"])).json(), values["icon-names"])
       : undefined;
@@ -796,6 +796,7 @@ async function main() {
       webpackMatches,
       previews: betaProbe.previews,
     });
+    if (iconFeed) guideData.iconStableVersion = iconFeed.stable.version;
 
     const violations = validatePublicGuideData(guideData, { allowPreviews: withPreviews });
     if (violations.length) {

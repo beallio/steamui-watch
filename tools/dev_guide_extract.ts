@@ -1120,24 +1120,26 @@ export interface CapturedPreviews {
 
 /**
  * Icon rows: the beta probe's registry, plus Stable-only names and each name's branches when the published
- * decky-icons.json name lists are given.
+ * decky-icons.json Stable list is given. Beta membership comes from the live probe, not the list: the publish
+ * workflow can pass an older, retained file whose Beta names lag the probe.
  */
 export function iconRows(
   betaIcons: { name: string; at: string[]; directional: boolean }[],
   webpackIconsAt: Record<string, string[]>,
-  feed?: Record<"stable" | "beta", { names: string[]; directional: string[] }>,
+  feed?: { stable: { names: string[]; directional: string[] } },
 ): Omit<IconEntry, "recipe">[] {
   const rows = new Map<string, Omit<IconEntry, "recipe">>();
   for (const ic of betaIcons) rows.set(ic.name, { name: ic.name, viteAt: ic.at, webpackAt: webpackIconsAt[ic.name] ?? [], directional: ic.directional });
   if (!feed) return [...rows.values()];
-  for (const name of feed.stable.names) {
+  const beta = new Set(rows.keys());
+  const stable = new Set(feed.stable.names);
+  for (const name of stable) {
     if (!rows.has(name)) rows.set(name, { name, viteAt: [], webpackAt: webpackIconsAt[name] ?? [], directional: feed.stable.directional.includes(name) });
   }
-  const branches = (name: string) => (["stable", "beta"] as const).filter((branch) => feed[branch].names.includes(name));
-  return [...rows.values()].map((row) => {
-    const found = branches(row.name);
-    return found.length ? { ...row, branches: found } : row;
-  });
+  return [...rows.values()].map((row) => ({
+    ...row,
+    branches: [...(stable.has(row.name) ? ["stable" as const] : []), ...(beta.has(row.name) ? ["beta" as const] : [])],
+  }));
 }
 
 export function buildGuideData(inputs: {

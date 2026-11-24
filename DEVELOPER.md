@@ -295,7 +295,7 @@ CHROME=/path/to/chrome bun tools/dev_guide.ts \
 
 On later runs, pass `--webpack-baseline "$scratch/webpack-baseline.json"` to reuse the metadata-only pre-Vite fingerprint baseline without re-booting the Webpack bundle. Outputs are validated by `validatePublicGuideData()` before writing and contain strict metadata and copy-paste recipes only (zero raw Valve JS bodies, verbatim CSS declarations, or SVGs).
 
-Pass `--icon-names decky-icons.json` (the published file or one built from `--icons-dir` snapshots) to label each icon "Stable and Beta", "Beta only" or "Stable only" and to add Stable-only names. The publishing workflow passes the staged `decky-icons.json`. Icon recipes use `SteamIcon` from `@beallio/decky-extras`.
+Pass `--icon-names decky-icons.json` (the published file or one built from `--icons-dir` snapshots) to label each icon "Stable and Beta", "Beta only" or "Stable only" and to add Stable-only names. Beta membership comes from the guide's own live Beta probe; only the Stable list comes from the file, and the guide shows that list's Stable version in each icon's details, because the publishing workflow may pass an older retained file. Icon recipes use `SteamIcon` from `@beallio/decky-extras`.
 
 For a local-only build with live rendered Steam Deck component previews (`ButtonItem`, `ToggleField`, `SliderField`, `ConfirmModal`, `decky-extras`, etc.) and all `IconsModule` SVG icons, pass `--with-previews` and keep the output in git-ignored `docs/local/` (never publish `--with-previews` output, as it embeds Valve's CSS and SVGs).
 

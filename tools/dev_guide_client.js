@@ -581,7 +581,7 @@
           <h3>Details</h3>
           <div class="kv-grid">
             <div class="kv-k">Directional</div><div class="kv-v">${it.directional ? "Yes (accepts direction prop: up/down/left/right)" : "No"}</div>
-            ${it.branches ? `<div class="kv-k">Steam branches</div><div class="kv-v">${it.branches.length === 2 ? "Stable and Beta" : it.branches[0] === "beta" ? "Beta only" : "Stable only"}</div>` : ""}
+            ${it.branches ? `<div class="kv-k">Steam branches</div><div class="kv-v">${[it.branches.includes("stable") ? "Stable" + (state.data.iconStableVersion ? " " + esc(state.data.iconStableVersion) : "") : "", it.branches.includes("beta") ? "Beta " + esc(state.data.beta.version) : ""].filter(Boolean).join(" and ") || "Neither listed"}</div>` : ""}
             <div class="kv-k">Vite ESM</div><div class="kv-v mono">${it.viteAt.map(esc).join("<br>")}</div>
             <div class="kv-k">Webpack Bridge</div><div class="kv-v mono">${it.webpackAt.map(esc).join("<br>") || "None"}</div>
           </div>

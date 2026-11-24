@@ -24,16 +24,17 @@ import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-test("icon rows add Stable-only names and each name's branches from decky-icons.json", () => {
+test("icon rows take Beta from the live probe and Stable from decky-icons.json", () => {
   const beta = [{ name: "Clock", at: ["esm:c:Clock"], directional: false }, { name: "NewThing", at: ["esm:c:N"], directional: false }];
+  // A retained, older feed: its Beta list predates NewThing and still has a name the live Beta dropped.
   const feed = {
-    stable: { names: ["Arrow", "Clock"], directional: ["Arrow"] },
-    beta: { names: ["Clock", "NewThing"], directional: [] },
+    stable: { version: "100", names: ["Arrow", "Clock", "NewThing"], directional: ["Arrow"] },
+    beta: { version: "90", names: ["Clock", "Dropped"], directional: [] },
   };
   const rows = iconRows(beta, { Clock: ["9:Clock"] }, feed);
   expect(rows).toEqual([
     { name: "Clock", viteAt: ["esm:c:Clock"], webpackAt: ["9:Clock"], directional: false, branches: ["stable", "beta"] },
-    { name: "NewThing", viteAt: ["esm:c:N"], webpackAt: [], directional: false, branches: ["beta"] },
+    { name: "NewThing", viteAt: ["esm:c:N"], webpackAt: [], directional: false, branches: ["stable", "beta"] },
     { name: "Arrow", viteAt: [], webpackAt: [], directional: true, branches: ["stable"] },
   ]);
   // Without the published lists the guide keeps the beta registry and claims no branches.
