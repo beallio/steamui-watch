@@ -34,10 +34,12 @@ export type SortOption<T extends string = string> = { label: string; value: T };
 export type ListHeaderProps<T extends string = string> = {
   label: React.ReactNode;
   count?: number;
+  /** The sort selector appears only with sortOptions, sort and onSortChange. */
   sortOptions?: readonly SortOption<T>[];
   sort?: T;
   /** NoInfer (TypeScript 5.4+): T comes from sortOptions and sort, so a useState setter fits. */
   onSortChange?: (value: NoInfer<T>) => void;
+  /** The direction button appears only with descending and onDescendingChange. */
   descending?: boolean;
   onDescendingChange?: (descending: boolean) => void;
   ascendingLabel?: string;

@@ -98,7 +98,7 @@ import { ListHeader } from "@beallio/decky-extras";
   sort={sort} onSortChange={setSort} descending={descending} onDescendingChange={setDescending} />
 ```
 
-Activating the sort selector moves to the next option. It does not open Steam's context menu: from the Quick Access menu that menu opens in Steam's main window, which hides the Quick Access menu and unmounts the plugin, so the choice would be lost with the component's state. The sort controls appear only when their props are given. `onSortChange` uses TypeScript's `NoInfer` (TypeScript 5.4 or newer), so a `useState` setter for a string union fits.
+Activating the sort selector moves to the next option. It does not open Steam's context menu: from the Quick Access menu that menu opens in Steam's main window, which hides the Quick Access menu and unmounts the plugin, so the choice would be lost with the component's state. Both controls are controlled: the selector appears only with `sortOptions`, `sort` and `onSortChange`, and the direction button only with `descending` and `onDescendingChange`. `onSortChange` uses TypeScript's `NoInfer` (TypeScript 5.4 or newer), so a `useState` setter for a string union fits.
 
 `DetailRow` is a list row with a title, a details line, an optional value column and action buttons:
 

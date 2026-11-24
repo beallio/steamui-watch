@@ -29,13 +29,16 @@ export function nextSortValue<T extends string>(options: readonly SortOption<T>[
   return options[(index + 1) % options.length]?.value;
 }
 
+/** The sort controls are controlled: each appears only with its current value and its change handler. */
 export type ListHeaderProps<T extends string = string> = {
   label: React.ReactNode;
   count?: number;
+  /** The sort selector needs sortOptions, sort and onSortChange. */
   sortOptions?: readonly SortOption<T>[];
   sort?: T;
   // T comes from sortOptions and sort; inferring from the callback would widen a useState setter's T to string.
   onSortChange?: (value: NoInfer<T>) => void;
+  /** The direction button needs descending and onDescendingChange. */
   descending?: boolean;
   onDescendingChange?: (descending: boolean) => void;
   /** Accessible names for the direction button; English defaults. */
@@ -44,11 +47,23 @@ export type ListHeaderProps<T extends string = string> = {
 };
 
 /**
- * Storage-style list header: label and count, a rule, a sort selector, and a sort-direction button. The sort
- * controls appear only when their props are given. Activating the selector moves to the next option.
+ * Which sort controls to draw. Without its current value a control could only repeat the first option or the
+ * same direction, so a control appears only with both its value and its handler.
+ */
+export function sortControls<T extends string>(props: ListHeaderProps<T>): { selector: boolean; direction: boolean } {
+  return {
+    selector: Boolean(props.sortOptions?.length) && props.sort !== undefined && typeof props.onSortChange === "function",
+    direction: typeof props.descending === "boolean" && typeof props.onDescendingChange === "function",
+  };
+}
+
+/**
+ * Storage-style list header: label and count, a rule, a sort selector, and a sort-direction button (see
+ * sortControls for when each appears). Activating the selector moves to the next option.
  */
 export function ListHeader<T extends string = string>(props: ListHeaderProps<T>): React.ReactElement {
   const { label, count, sortOptions, sort, onSortChange, descending, onDescendingChange } = props;
+  const show = sortControls(props);
   const { Focusable } = DeckyUI;
   const current = sortOptions?.length ? sortLabel(sortOptions, sort) : "";
   // Not Steam's context menu: from the Quick Access menu it opens in Steam's main window, which hides the Quick
@@ -67,12 +82,12 @@ export function ListHeader<T extends string = string>(props: ListHeaderProps<T>)
       h("span", { style: { color: COLORS.textPrimary, fontSize: 16, fontWeight: 500, lineHeight: "20px", whiteSpace: "nowrap" } }, label),
       count === undefined ? null : h("span", { style: { color: COLORS.textSub, fontSize: 16, fontWeight: 500, lineHeight: "20px", marginLeft: 8 } }, count),
       h("div", { "aria-hidden": true, style: { flexGrow: 1, height: 2, margin: "0 10px", backgroundColor: COLORS.rule } }),
-      sortOptions?.length && onSortChange
+      show.selector
         ? button({ "aria-label": current, onActivate: cycle },
           h("span", { style: { marginRight: 8, display: "flex" } }, h(SteamIcon, { name: "SortByGeneric", size: 16 })),
           h("span", { style: { fontSize: 16, lineHeight: "20px", whiteSpace: "nowrap" } }, current))
         : null,
-      onDescendingChange
+      show.direction && onDescendingChange
         ? button({
           "aria-label": descending ? props.ascendingLabel ?? "Sort ascending" : props.descendingLabel ?? "Sort descending",
           onActivate: () => onDescendingChange(!descending),
